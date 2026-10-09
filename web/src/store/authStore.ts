@@ -2,6 +2,7 @@ import axios from 'axios';
 import { create } from 'zustand';
 import { API_BASE } from '../config';
 import { CSRF_HEADER, CSRF_VALUE } from '../api/csrf';
+import * as profileApi from '../api/profileApi';
 import type { UserProfile } from '../api/types';
 
 /**
@@ -15,6 +16,8 @@ interface AuthState {
   initialized: boolean;
   loadSession: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** 닉네임·사용자명을 바꾼다. 실패하면(사용 중인 사용자명 등) 서버의 안내 문구로 예외를 던진다. */
+  updateProfile: (nickname: string, username: string) => Promise<void>;
   /** 서버가 401 을 돌려줬다: 세션이 끝난 것이므로 화면 상태를 비로그인으로 맞춘다. */
   markSignedOut: () => void;
 }
@@ -57,6 +60,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       console.warn('Logout request failed', error);
     }
     set(SIGNED_OUT);
+  },
+
+  updateProfile: async (nickname, username) => {
+    const profile = await profileApi.updateProfile(nickname, username);
+    set({ user: profile });
   },
 
   markSignedOut: () => set(SIGNED_OUT),
