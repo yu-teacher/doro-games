@@ -1,0 +1,90 @@
+server:
+  port: 8087
+
+spring:
+  application:
+    name: doro-games
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:25432}/${DB_NAME:service_games}
+    username: ${DB_USER:doro_admin}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      connection-timeout: 20000
+      max-lifetime: 1800000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+        show_sql: false
+        default_batch_fetch_size: 100
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    table: games_schema_history
+    locations: classpath:db/migration
+
+doro:
+  iam:
+    jwks-uri: http://${IAM_HOST:localhost}:${IAM_PORT:28080}/.well-known/jwks.json
+    # 도로 게임 천국 BFF 가 받은 OAuth 토큰(cid=도로 게임 천국 클라이언트)만 받아 준다. 다른 클라이언트의 토큰은 거부한다.
+    oauth-client-ids: ${GAMES_OAUTH_CLIENT_ID:doro-games}
+    # 다른 곳에서 로그아웃하면 이 서비스의 세션도 바로 끝난다(IAM 에 닿지 못하면 통과 = fail-open)
+    revocation-check: ${DORO_IAM_REVOCATION_CHECK:ENFORCE}
+  guard:
+    grpc-host: ${GUARD_GRPC_HOST:localhost}
+    grpc-port: ${GUARD_GRPC_PORT:9090}
+    http-url: http://${GUARD_HTTP_HOST:localhost}:${GUARD_HTTP_PORT:28081}
+    http-timeout-ms: ${GUARD_HTTP_TIMEOUT_MS:5000}
+    service-token: ${DORO_GUARD_SERVICE_TOKEN:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      # 의존 서비스 상세(DB/Redis 등)는 인증 없이 노출하지 않는다. 상태(UP/DOWN)만 공개된다.
+      show-details: when-authorized
+
+logging:
+  level:
+    root: INFO
+    com.doro.games: ${LOG_LEVEL_APP:INFO}
+    com.hunnit_beasts.doro.sdk: ${LOG_LEVEL_SDK:INFO}
+
+# 도로 게임 천국 BFF 로그인 (Doro OAuth). 로그인 화면은 Doro 가 담당하고, 도로 게임 천국는 비밀번호를 다루지 않는다.
+games:
+  auth:
+    client-id: ${GAMES_OAUTH_CLIENT_ID:doro-games}
+    authorize-url: ${GAMES_OAUTH_AUTHORIZE_URL:http://localhost:28080/oauth2/authorize}
+    token-url: ${GAMES_OAUTH_TOKEN_URL:http://${IAM_HOST:localhost}:${IAM_PORT:28080}/oauth2/token}
+    revoke-url: ${GAMES_OAUTH_REVOKE_URL:http://${IAM_HOST:localhost}:${IAM_PORT:28080}/oauth2/revoke}
+    redirect-uri: ${GAMES_OAUTH_REDIRECT_URI:http://localhost:3006/games/api/v1/bff/callback}
+    cookie-secure: ${GAMES_COOKIE_SECURE:true}
+    # 웹이 마운트된 하위 경로. 세션 쿠키 Path 와 로그인 후 이동 경로의 접두사. 게이트웨이가 /games 를 떼고 전달하므로 API 경로는 /api/v1 그대로다.
+    web-base-path: ${GAMES_WEB_BASE_PATH:/games}
+    # DB 에 저장하는 토큰을 암호화하는 키(base64 32바이트). 기본값 없음: openssl rand -base64 32
+    session-encryption-key: ${GAMES_SESSION_KEY}
+
+# 점수 타당성 규칙: 서버가 잰 판 시간 안에 낼 수 있는 최대 점수. 규칙이 없는 게임은 기록을 받지 않는다.
+  scoring:
+    network-tolerance-ms: ${GAMES_SCORE_TOLERANCE_MS:3000}
+    rules:
+      runner:
+        max-points-per-second: ${GAMES_RUNNER_MAX_PPS:25}

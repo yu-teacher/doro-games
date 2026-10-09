@@ -1,0 +1,9 @@
+# DORO Games ReBAC Zanzibar Schema
+
+# 게임 단위 권한. 모든 사용자는 게임을 플레이할 수 있고(로그인 여부와 무관한 공개 게임은 권한 검사 없음),
+# 운영자(admin)만 게임을 열고 닫거나 랭킹 기록을 숨길 수 있다.
+# 점수 기록 숨김처럼 "누가 관리할 수 있나" 를 코드의 if(role) 분기가 아니라 관계 튜플로 판정한다.
+type games_game {
+  relation admin: user
+  relation manager: admin | user
+}

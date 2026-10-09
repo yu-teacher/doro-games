@@ -1,0 +1,47 @@
+services:
+  games-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: doro-games-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8087:8087"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: service_games
+      DB_USER: ${DB_USER:-doro_admin}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      IAM_HOST: auth-api
+      IAM_PORT: 8080
+      GUARD_GRPC_HOST: guard-api
+      GUARD_GRPC_PORT: 9090
+      GUARD_HTTP_HOST: guard-api
+      GUARD_HTTP_PORT: 8081
+      DORO_GUARD_SERVICE_TOKEN: ${DORO_GUARD_SERVICE_TOKEN:-}
+      GAMES_OAUTH_CLIENT_ID: ${GAMES_OAUTH_CLIENT_ID:-doro-games}
+      GAMES_OAUTH_AUTHORIZE_URL: ${GAMES_OAUTH_AUTHORIZE_URL:?GAMES_OAUTH_AUTHORIZE_URL must be set in .env}
+      GAMES_OAUTH_REDIRECT_URI: ${GAMES_OAUTH_REDIRECT_URI:?GAMES_OAUTH_REDIRECT_URI must be set in .env}
+      GAMES_SESSION_KEY: ${GAMES_SESSION_KEY:?GAMES_SESSION_KEY must be set in .env}
+    networks:
+      - doro-network
+
+  games-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: doro-games-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3006:80"
+    depends_on:
+      - games-api
+    networks:
+      - doro-network
+
+networks:
+  doro-network:
+    external: true
+    name: doro_doro-network
