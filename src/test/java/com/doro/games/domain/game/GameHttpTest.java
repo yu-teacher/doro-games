@@ -121,4 +121,25 @@ class GameHttpTest extends GamesHttpTestBase {
         mockMvc.perform(patch("/api/v1/games/runner").contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":false}"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    @DisplayName("로비 요약은 비로그인이면 1위만, 로그인하면 내 최고 기록과 순위도 준다")
+    void highlights() throws Exception {
+        TestUser user = newUser();
+        submit(user, startRun(user, RUNNER), 40).andExpect(status().isOk());
+
+        String anonymous = mockMvc.perform(get("/api/v1/games/highlights")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.slug=='runner')].topScore").isNotEmpty())
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<Object> anonymousBest = JsonPath.read(anonymous, "$.data[?(@.slug=='runner')].myBest");
+        assertThat(anonymousBest).containsOnlyNulls();
+
+        String body = send(user, get("/api/v1/games/highlights")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        java.util.List<Integer> mine = JsonPath.read(body, "$.data[?(@.slug=='runner')].myBest");
+        java.util.List<Integer> rank = JsonPath.read(body, "$.data[?(@.slug=='runner')].myRank");
+        assertThat(mine).containsExactly(40);
+        assertThat(rank.get(0)).isGreaterThanOrEqualTo(1);
+        // 닫힌 게임이 아니라 열린 게임 정보만, 이메일 같은 계정 정보는 없다
+        assertThat(body).doesNotContain(user.email());
+    }
 }

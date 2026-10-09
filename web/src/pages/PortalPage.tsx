@@ -1,34 +1,36 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { listGames } from '../api/gamesApi';
-import type { Game } from '../api/types';
+import { getHighlights } from '../api/gamesApi';
+import type { GameHighlight } from '../api/types';
+import GameCard from '../components/GameCard';
+import Hero from '../components/Hero';
+import { useAuthStore } from '../store/authStore';
 
-type LoadState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; games: Game[] };
+type LoadState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; games: GameHighlight[] };
 
 export default function PortalPage() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [state, setState] = useState<LoadState>({ status: 'loading' });
 
+  // 로그인 상태가 바뀌면(로그인·로그아웃) 내 기록이 달라지므로 다시 불러온다
   useEffect(() => {
     const controller = new AbortController();
-    listGames(controller.signal)
+    getHighlights(controller.signal)
       .then((games) => setState({ status: 'ready', games }))
       .catch((error: unknown) => {
         if (controller.signal.aborted) {
           return;
         }
-        console.error('Failed to load games', error);
+        console.error('Failed to load the lobby', error);
         setState({ status: 'error', message: error instanceof Error ? error.message : '게임 목록을 불러오지 못했습니다.' });
       });
     return () => controller.abort();
-  }, []);
+  }, [isAuthenticated]);
 
   return (
     <main className="mx-auto max-w-4xl px-4 pb-16 sm:px-6">
-      <section className="py-8">
-        <h1 className="text-2xl font-extrabold text-slate-50 sm:text-3xl">오늘은 어떤 게임을 달려볼까요?</h1>
-        <p className="mt-2 text-slate-400">잠깐 쉬어 가는 미니게임 모음. 로그인하면 기록이 랭킹에 올라가요.</p>
-      </section>
+      <Hero />
 
+      <h2 className="mb-4 mt-10 text-sm font-semibold uppercase tracking-wide text-slate-400">게임</h2>
       {state.status === 'loading' && <p className="text-slate-400">불러오는 중…</p>}
       {state.status === 'error' && (
         <p role="alert" className="rounded-lg border border-rose-500/40 bg-rose-950/40 p-4 text-rose-200">
@@ -40,16 +42,15 @@ export default function PortalPage() {
         <ul className="grid gap-4 sm:grid-cols-2">
           {state.games.map((game) => (
             <li key={game.slug}>
-              <Link
-                to={`/g/${game.slug}`}
-                className="block h-full rounded-2xl border border-slate-700 bg-slate-900 p-5 transition hover:border-sky-400 hover:bg-slate-800"
-              >
-                <h2 className="text-lg font-bold text-slate-50">{game.title}</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-400">{game.description}</p>
-                <span className="mt-4 inline-block text-sm font-semibold text-sky-300">플레이 →</span>
-              </Link>
+              <GameCard game={game} isAuthenticated={isAuthenticated} />
             </li>
           ))}
+          <li>
+            <div className="flex h-full min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 p-5 text-center">
+              <p className="text-lg font-bold text-slate-400">다음 게임 준비 중</p>
+              <p className="mt-1 text-sm text-slate-500">곧 새로운 미니게임이 문을 열어요.</p>
+            </div>
+          </li>
         </ul>
       )}
     </main>

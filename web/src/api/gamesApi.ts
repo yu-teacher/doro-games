@@ -1,8 +1,14 @@
 import { apiClient } from './client';
-import type { ApiEnvelope, Game, Leaderboard, MyRecord, Run, SubmitScoreResult } from './types';
+import type { ApiEnvelope, Game, GameHighlight, Leaderboard, MyRecord, Run, SubmitScoreResult } from './types';
 
 export async function listGames(signal?: AbortSignal): Promise<Game[]> {
   const response = await apiClient.get<ApiEnvelope<Game[]>>('/games', { signal });
+  return response.data.data;
+}
+
+/** 로비 카드용: 열린 게임과 현재 1위, 로그인했다면 내 기록 */
+export async function getHighlights(signal?: AbortSignal): Promise<GameHighlight[]> {
+  const response = await apiClient.get<ApiEnvelope<GameHighlight[]>>('/games/highlights', { signal });
   return response.data.data;
 }
 

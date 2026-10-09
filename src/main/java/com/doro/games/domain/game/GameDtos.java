@@ -38,6 +38,11 @@ public final class GameDtos {
     public record LeaderboardResponse(String slug, java.util.List<LeaderboardEntry> entries) {
     }
 
+    /** 로비 카드 한 장: 게임 정보와 현재 1위, (로그인했다면) 내 최고 기록. 기록이 없으면 해당 필드는 null. */
+    public record GameHighlight(String slug, String title, String description,
+                                Long topScore, String topNickname, Long myBest, Long myRank) {
+    }
+
     public record MyRecordResponse(long best, long plays, long rank) {
     }
 }

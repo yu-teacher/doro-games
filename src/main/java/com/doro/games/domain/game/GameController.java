@@ -3,6 +3,7 @@ package com.doro.games.domain.game;
 import com.doro.games.common.exception.ErrorCode;
 import com.doro.games.common.exception.GamesException;
 import com.doro.games.common.response.ApiResponse;
+import com.doro.games.domain.game.GameDtos.GameHighlight;
 import com.doro.games.domain.game.GameDtos.GameResponse;
 import com.doro.games.domain.game.GameDtos.LeaderboardResponse;
 import com.doro.games.domain.game.GameDtos.MyRecordResponse;
@@ -49,6 +50,12 @@ public class GameController {
     @GetMapping
     public ApiResponse<List<GameResponse>> list() {
         return ApiResponse.success(gameService.list());
+    }
+
+    @Operation(summary = "로비 요약 (공개, 로그인하면 내 기록 포함)", description = "열린 게임마다 현재 1위와 내 최고 기록·순위. /{slug} 보다 먼저 매칭되므로 slug 로 highlights 를 쓸 수 없다")
+    @GetMapping("/highlights")
+    public ApiResponse<List<GameHighlight>> highlights(@CurrentDoroUser DoroUser doroUser) {
+        return ApiResponse.success(gameService.highlights(doroUser));
     }
 
     @Operation(summary = "게임 한 개 (공개)")

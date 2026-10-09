@@ -48,3 +48,14 @@ export interface MyRecord {
   plays: number;
   rank: number;
 }
+
+/** 로비 카드 한 장. 기록이 없는 필드는 null. */
+export interface GameHighlight {
+  slug: string;
+  title: string;
+  description: string;
+  topScore: number | null;
+  topNickname: string | null;
+  myBest: number | null;
+  myRank: number | null;
+}

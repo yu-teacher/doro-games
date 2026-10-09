@@ -2,6 +2,7 @@ package com.doro.games.domain.game;
 
 import com.doro.games.common.exception.ErrorCode;
 import com.doro.games.common.exception.GamesException;
+import com.doro.games.domain.game.GameDtos.GameHighlight;
 import com.doro.games.domain.game.GameDtos.GameResponse;
 import com.doro.games.domain.game.GameDtos.LeaderboardEntry;
 import com.doro.games.domain.game.GameDtos.LeaderboardResponse;
@@ -37,6 +38,40 @@ public class GameService {
     @Transactional(readOnly = true)
     public List<GameResponse> list() {
         return gameRepository.findByEnabledTrueOrderBySortOrderAscTitleAsc().stream().map(GameResponse::from).toList();
+    }
+
+    /** 로비용 요약. 열린 게임마다 현재 1위와 내 최고 기록·순위를 한 번의 질의로 가져온다(비로그인이면 내 기록은 비어 있다). */
+    @Transactional(readOnly = true)
+    public List<GameHighlight> highlights(DoroUser doroUser) {
+        UUID userId = doroUser.isAuthenticated() ? doroUser.userId() : null;
+        return jdbc.sql("""
+                SELECT g.slug, g.title, g.description,
+                       t.best_score AS top_score, t.nickname AS top_nickname,
+                       m.best_score AS my_best,
+                       CASE WHEN m.best_score IS NULL THEN NULL ELSE (
+                           SELECT COUNT(*) + 1 FROM game_records o
+                           WHERE o.game_id = g.id
+                             AND (o.best_score > m.best_score OR (o.best_score = m.best_score AND o.achieved_at < m.achieved_at))
+                       ) END AS my_rank
+                FROM games g
+                LEFT JOIN LATERAL (
+                    SELECT r.best_score, u.nickname FROM game_records r JOIN game_users u ON u.id = r.user_id
+                    WHERE r.game_id = g.id ORDER BY r.best_score DESC, r.achieved_at ASC LIMIT 1
+                ) t ON TRUE
+                LEFT JOIN game_records m ON m.game_id = g.id AND m.user_id = CAST(:userId AS uuid)
+                WHERE g.enabled
+                ORDER BY g.sort_order, g.title
+                """)
+                .param("userId", userId == null ? null : userId.toString())
+                .query((rs, i) -> new GameHighlight(rs.getString("slug"), rs.getString("title"), rs.getString("description"),
+                        nullableLong(rs, "top_score"), rs.getString("top_nickname"),
+                        nullableLong(rs, "my_best"), nullableLong(rs, "my_rank")))
+                .list();
+    }
+
+    private static Long nullableLong(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
     }
 
     @Transactional(readOnly = true)

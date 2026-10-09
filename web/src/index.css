@@ -17,3 +17,33 @@ body {
   font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* 로비 장식 움직임. 움직임을 줄이도록 설정한 사용자에게는 멈춘다. */
+@keyframes mascot-bob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-10px) rotate(2deg); }
+}
+
+@keyframes road-scroll {
+  from { background-position-x: 0; }
+  to { background-position-x: -64px; }
+}
+
+.mascot-bob {
+  animation: mascot-bob 0.7s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+
+.road-dashes {
+  background-image: linear-gradient(90deg, #94a3b8 0 28px, transparent 28px 64px);
+  background-size: 64px 3px;
+  background-repeat: repeat-x;
+  animation: road-scroll 0.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-bob,
+  .road-dashes {
+    animation: none;
+  }
+}
