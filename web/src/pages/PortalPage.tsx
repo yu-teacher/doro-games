@@ -39,7 +39,7 @@ export default function PortalPage() {
       )}
       {state.status === 'ready' && state.games.length === 0 && <p className="text-slate-400">아직 열려 있는 게임이 없어요.</p>}
       {state.status === 'ready' && state.games.length > 0 && (
-        <ul className="grid gap-4 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {state.games.map((game) => (
             <li key={game.slug}>
               <GameCard game={game} isAuthenticated={isAuthenticated} />

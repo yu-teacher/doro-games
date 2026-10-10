@@ -34,7 +34,7 @@ export default function GameCard({ game, isAuthenticated }: GameCardProps) {
         <dl className="mt-4 space-y-1 text-sm">
           <div className="flex items-center justify-between gap-3">
             <dt className="text-slate-500">1위</dt>
-            <dd className="truncate text-right text-slate-200">
+            <dd className="min-w-0 truncate text-right text-slate-200">
               {game.topScore === null ? '아직 없어요' : `${game.topNickname ?? ''} · ${points(game.topScore)}`}
             </dd>
           </div>

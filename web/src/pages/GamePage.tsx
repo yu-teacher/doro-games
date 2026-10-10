@@ -124,7 +124,7 @@ export default function GamePage() {
         <p className="mt-1 text-slate-400">{load.game.description}</p>
       </div>
 
-      <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem] [@media(max-height:500px)]:mt-1">
+      <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_16rem] [@media(max-height:500px)]:mt-1">
         <section>
           <GameComponent best={record?.best ?? null} onStart={handleStart} onGameOver={handleGameOver} />
           <div aria-live="polite" className="mt-3 min-h-6 text-sm">
