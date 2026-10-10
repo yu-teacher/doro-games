@@ -115,13 +115,16 @@ export default function GamePage() {
 
   return (
     <main className="mx-auto max-w-4xl px-4 pb-16 sm:px-6">
-      <Link to="/" className="text-sm text-slate-400 hover:text-sky-300">
+      <Link to="/" className="inline-block py-2 text-sm text-slate-400 hover:text-sky-300">
         ← 게임 목록
       </Link>
-      <h1 className="mt-2 text-2xl font-extrabold text-slate-50">{load.game.title}</h1>
-      <p className="mt-1 text-slate-400">{load.game.description}</p>
+      {/* 화면 높이가 낮은 가로 모드 폰에서는 제목·설명을 숨겨 게임과 조작 버튼이 한 화면에 들어오게 한다 */}
+      <div className="[@media(max-height:500px)]:hidden">
+        <h1 className="mt-2 text-2xl font-extrabold text-slate-50">{load.game.title}</h1>
+        <p className="mt-1 text-slate-400">{load.game.description}</p>
+      </div>
 
-      <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
+      <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem] [@media(max-height:500px)]:mt-1">
         <section>
           <GameComponent best={record?.best ?? null} onStart={handleStart} onGameOver={handleGameOver} />
           <div aria-live="polite" className="mt-3 min-h-6 text-sm">

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import playerSpriteUrl from './assets/player.png';
 import {
   PLAYER,
@@ -12,6 +13,7 @@ import {
   type RunnerInput,
   type RunnerState,
 } from './engine';
+import { fitFontSize, uiScaleFor } from './layout';
 
 interface RunnerGameProps {
   /** 내 최고 기록(없으면 null). 화면 위쪽에 보여 준다. */
@@ -140,7 +142,37 @@ function drawPlayer(ctx: CanvasRenderingContext2D, state: RunnerState): void {
   ctx.restore();
 }
 
-function draw(ctx: CanvasRenderingContext2D, state: RunnerState, phase: Phase, best: number | null): void {
+/** 화면에 따라 달라지는 그리기 설정 */
+interface DrawOptions {
+  /** 글자를 월드 좌표에서 얼마나 키워 그릴지(uiScaleFor). 폰에서 글자가 화면에서 읽힐 크기로 보이게 한다. */
+  ui: number;
+  /** 터치 화면이면 키보드 안내 대신 터치 안내를 보여 준다 */
+  touch: boolean;
+}
+
+const MESSAGES = {
+  idle: {
+    keyboard: ['스페이스 · ↑ · 화면 터치로 시작', '↓ 또는 화면 아래쪽을 누르면 숙여요'],
+    touch: ['화면을 터치해서 시작', '아래 버튼으로 점프·숙이기'],
+  },
+  over: {
+    keyboard: '스페이스 · 터치로 다시 시작',
+    touch: '터치해서 다시 시작',
+  },
+} as const;
+
+/** 가운데 정렬 글자 한 줄. 키운 글자가 캔버스 폭을 넘으면 폭에 맞게 줄여 잘리지 않게 한다. */
+function drawCenteredText(ctx: CanvasRenderingContext2D, text: string, y: number, weight: string, size: number, family: string): void {
+  const fitted = fitFontSize(size, WORLD.width * 0.94, (fontSize) => {
+    ctx.font = `${weight} ${fontSize}px ${family}`;
+    return ctx.measureText(text).width;
+  });
+  ctx.font = `${weight} ${fitted}px ${family}`;
+  ctx.fillText(text, WORLD.width / 2, y);
+}
+
+function draw(ctx: CanvasRenderingContext2D, state: RunnerState, phase: Phase, best: number | null, options: DrawOptions): void {
+  const { ui, touch } = options;
   ctx.fillStyle = COLORS.sky;
   ctx.fillRect(0, 0, WORLD.width, WORLD.height);
 
@@ -158,36 +190,45 @@ function draw(ctx: CanvasRenderingContext2D, state: RunnerState, phase: Phase, b
   state.obstacles.forEach((o) => drawObstacle(ctx, o, state.tick));
   drawPlayer(ctx, state);
 
-  ctx.font = '600 16px ui-monospace, SFMono-Regular, Menlo, monospace';
+  // 점수: 오른쪽 위. BEST 는 그 왼쪽에 점수 폭만큼 비켜서 그린다(글자가 커져도 겹치지 않게)
+  const hudFont = `600 ${16 * ui}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  const margin = 12 * ui;
+  ctx.font = hudFont;
   ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+  const scoreText = String(scoreOf(state)).padStart(5, '0');
   ctx.fillStyle = COLORS.text;
-  ctx.fillText(String(scoreOf(state)).padStart(5, '0'), WORLD.width - 12, 24);
+  ctx.fillText(scoreText, WORLD.width - margin, 12 * ui + 8);
   if (best !== null) {
     ctx.fillStyle = COLORS.textDim;
-    ctx.fillText(`BEST ${String(best).padStart(5, '0')}`, WORLD.width - 84, 24);
+    ctx.fillText(`BEST ${String(best).padStart(5, '0')}`, WORLD.width - margin - ctx.measureText(scoreText).width - 12 * ui, 12 * ui + 8);
   }
 
   ctx.textAlign = 'center';
   if (phase === 'idle') {
+    const [first, second] = touch ? MESSAGES.idle.touch : MESSAGES.idle.keyboard;
     ctx.fillStyle = COLORS.text;
-    ctx.font = '600 18px system-ui, sans-serif';
-    ctx.fillText('스페이스 · ↑ · 화면 터치로 시작', WORLD.width / 2, 74);
+    drawCenteredText(ctx, first, 70 + 16 * (ui - 1), '600', 18 * ui, 'system-ui, sans-serif');
     ctx.fillStyle = COLORS.textDim;
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('↓ 또는 화면 아래쪽을 누르면 숙여요', WORLD.width / 2, 98);
+    drawCenteredText(ctx, second, 98 + 24 * (ui - 1), '400', 14 * ui, 'system-ui, sans-serif');
   } else if (phase === 'over') {
     ctx.fillStyle = COLORS.text;
-    ctx.font = '700 22px system-ui, sans-serif';
-    ctx.fillText('GAME OVER', WORLD.width / 2, 70);
+    drawCenteredText(ctx, 'GAME OVER', 66 + 14 * (ui - 1), '700', 22 * ui, 'system-ui, sans-serif');
     ctx.fillStyle = COLORS.textDim;
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('스페이스 · 터치로 다시 시작', WORLD.width / 2, 96);
+    drawCenteredText(ctx, touch ? MESSAGES.over.touch : MESSAGES.over.keyboard, 96 + 22 * (ui - 1), '400', 14 * ui, 'system-ui, sans-serif');
   }
+}
+
+/** 화면 버튼이 게임 입력을 움직이는 통로. 입력 상태는 게임 루프를 가진 effect 안에 있어서 ref 로 연결한다. */
+interface TouchControls {
+  jump: (down: boolean) => void;
+  duck: (down: boolean) => void;
 }
 
 /** 도로 러너 Canvas. 규칙은 engine.ts 에 있고, 이 컴포넌트는 입력을 모으고 그리는 일만 한다. */
 export default function RunnerGame({ best, onStart, onGameOver }: RunnerGameProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const controlsRef = useRef<TouchControls | null>(null);
   const bestRef = useRef(best);
   const onStartRef = useRef(onStart);
   const onGameOverRef = useRef(onGameOver);
@@ -209,6 +250,7 @@ export default function RunnerGame({ best, onStart, onGameOver }: RunnerGameProp
     canvas.height = WORLD.height * dpr;
     ctx.scale(dpr, dpr);
 
+    const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
     let state = createState(newSeed());
     let phase: Phase = 'idle';
     let overAt = 0;
@@ -282,10 +324,30 @@ export default function RunnerGame({ best, onStart, onGameOver }: RunnerGameProp
           onGameOverRef.current(scoreOf(state));
         }
       }
-      draw(ctx, state, phase, bestRef.current);
+      draw(ctx, state, phase, bestRef.current, { ui: uiScaleFor(canvas.clientWidth), touch });
       frameId = requestAnimationFrame(frame);
     };
     frameId = requestAnimationFrame(frame);
+
+    // 화면 버튼: 점프는 캔버스를 누르는 것과 같고, 숙이기는 누르고 있는 동안만 숙인다(멈춰 있을 때 누르면 판을 시작한다)
+    controlsRef.current = {
+      jump: (down) => {
+        if (down) {
+          pressJump();
+        } else {
+          input.jump = false;
+        }
+      },
+      duck: (down) => {
+        if (!down) {
+          input.duck = false;
+        } else if (phase === 'playing') {
+          input.duck = true;
+        } else {
+          pressJump();
+        }
+      },
+    };
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -294,6 +356,7 @@ export default function RunnerGame({ best, onStart, onGameOver }: RunnerGameProp
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerUp);
     return () => {
+      controlsRef.current = null;
       cancelAnimationFrame(frameId);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
@@ -304,12 +367,38 @@ export default function RunnerGame({ best, onStart, onGameOver }: RunnerGameProp
     };
   }, []);
 
+  const press = (action: keyof TouchControls, down: boolean) => (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    controlsRef.current?.[action](down);
+  };
+  const controlProps = (action: keyof TouchControls) => ({
+    onPointerDown: press(action, true),
+    onPointerUp: press(action, false),
+    onPointerCancel: press(action, false),
+    onPointerLeave: press(action, false),
+    // 길게 누르면 뜨는 메뉴(복사·공유)가 게임 중에 끼어들지 않게 한다
+    onContextMenu: (event: { preventDefault: () => void }) => event.preventDefault(),
+  });
+  const CONTROL =
+    'h-20 [@media(max-height:500px)]:h-14 touch-none select-none rounded-2xl border border-slate-600 bg-slate-800 text-lg font-bold text-slate-100 active:bg-slate-700';
+
   return (
-    <canvas
-      ref={canvasRef}
-      aria-label="도로 러너 게임 화면"
-      className="block w-full touch-none select-none rounded-xl border border-slate-700 bg-slate-950"
-      style={{ aspectRatio: `${WORLD.width} / ${WORLD.height}` }}
-    />
+    <div>
+      <canvas
+        ref={canvasRef}
+        aria-label="도로 러너 게임 화면"
+        className="block w-full touch-none select-none rounded-xl border border-slate-700 bg-slate-950"
+        style={{ aspectRatio: `${WORLD.width} / ${WORLD.height}` }}
+      />
+      {/* 터치 화면에서만 보이는 큰 조작 버튼. 캔버스는 폰에서 납작해서(높이 약 100px) 아래 3분의 1을 누르기엔 너무 좁다. */}
+      <div className="mt-3 hidden grid-cols-2 gap-3 pointer-coarse:grid [@media(max-height:500px)]:mt-2">
+        <button type="button" aria-label="숙이기 (누르고 있는 동안)" {...controlProps('duck')} className={CONTROL}>
+          숙이기
+        </button>
+        <button type="button" aria-label="점프" {...controlProps('jump')} className={`${CONTROL} border-sky-500/60 bg-sky-500/15 text-sky-200`}>
+          점프
+        </button>
+      </div>
+    </div>
   );
 }

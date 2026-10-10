@@ -47,3 +47,21 @@ body {
     animation: none;
   }
 }
+
+/*
+ * 터치 화면(폰·태블릿)에서만 적용한다. 마우스를 쓰는 화면은 그대로다.
+ * 1) 입력창 글자는 16px 이상이어야 한다. 그보다 작으면 iOS Safari 가 입력창을 누를 때 화면을 확대한다(프로필 수정 입력).
+ * 2) 손가락으로 누르는 버튼은 최소 36px 높이를 확보한다(닉네임·로그아웃 등 20~30px 짜리가 있었다).
+ */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  button,
+  select {
+    min-height: 36px;
+  }
+}

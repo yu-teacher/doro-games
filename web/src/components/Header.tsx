@@ -10,7 +10,7 @@ export default function Header() {
 
   return (
     <header className="flex items-center justify-between px-4 py-3 sm:px-6">
-      <Link to="/" className="text-lg font-bold tracking-tight text-sky-300">
+      <Link to="/" className="inline-block py-1 text-lg font-bold tracking-tight text-sky-300">
         도로 게임 천국
       </Link>
       {isAuthenticated && user ? (
