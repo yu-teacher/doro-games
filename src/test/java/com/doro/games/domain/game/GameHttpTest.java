@@ -142,4 +142,19 @@ class GameHttpTest extends GamesHttpTestBase {
         // 닫힌 게임이 아니라 열린 게임 정보만, 이메일 같은 계정 정보는 없다
         assertThat(body).doesNotContain(user.email());
     }
+
+    @Test
+    @DisplayName("2048 은 열려 있고, 시간 안의 점수는 기록되며 이론상 최대 점수를 넘는 값은 거절한다")
+    void game2048() throws Exception {
+        mockMvc.perform(get("/api/v1/games/2048")).andExpect(status().isOk());
+        TestUser user = newUser();
+
+        String ok = startRun(user, "2048");
+        send(user, post("/api/v1/games/{s}/runs/{r}/score", "2048", ok).contentType(MediaType.APPLICATION_JSON).content("{\"score\":1500}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.best").value(1500));
+
+        String tooBig = startRun(user, "2048");
+        send(user, post("/api/v1/games/{s}/runs/{r}/score", "2048", tooBig).contentType(MediaType.APPLICATION_JSON).content("{\"score\":3932157}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("SCORE-400-01"));
+    }
 }

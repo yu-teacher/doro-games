@@ -88,3 +88,7 @@ games:
     rules:
       runner:
         max-points-per-second: ${GAMES_RUNNER_MAX_PPS:25}
+      # 2048: 한 수에 최대 8번 합쳐질 수 있고 사람이 초당 몇 수 두는지에 한계가 있다. 이론상 최대 점수(4x4 에서 131072 까지)는 3,932,156 이다.
+      "2048":
+        max-points-per-second: ${GAMES_2048_MAX_PPS:600}
+        max-score: 3932156

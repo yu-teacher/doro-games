@@ -5,13 +5,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.Map;
 
 /**
- * 점수 타당성 규칙. 게임 slug 별로 "1초에 낼 수 있는 최대 점수" 를 정한다(환경변수로 조정).
+ * 점수 타당성 규칙. 게임 slug 별로 "1초에 낼 수 있는 최대 점수" 와, 있다면 규칙상 낼 수 있는 절대 최대 점수를 정한다(환경변수로 조정).
  * 규칙이 없는 게임은 기록을 받지 않는다(안전한 쪽으로 닫는다).
  */
 @ConfigurationProperties(prefix = "games.scoring")
 public record ScoringProperties(long networkToleranceMs, Map<String, Rule> rules) {
 
-    public record Rule(double maxPointsPerSecond) {
+    /** @param maxScore 게임 규칙상 불가능한 점수의 상한(없으면 null). 시간과 무관하게 이보다 큰 점수는 거절한다. */
+    public record Rule(double maxPointsPerSecond, Long maxScore) {
     }
 
     public ScoringProperties {

@@ -120,7 +120,8 @@ public class GameService {
         }
         double elapsedSeconds = Duration.between(run.getStartedAt(), now).toMillis() / 1000.0;
         double ceiling = rule.maxPointsPerSecond() * (elapsedSeconds + scoring.networkToleranceMs() / 1000.0);
-        if (score < 0 || score > GameDtos.SCORE_CAP || score > ceiling) {
+        boolean overRuleMax = rule.maxScore() != null && score > rule.maxScore();
+        if (score < 0 || score > GameDtos.SCORE_CAP || score > ceiling || overRuleMax) {
             log.warn("Rejected implausible score: game={}, userId={}, score={}, elapsedSeconds={}", slug, user.getId(), score, elapsedSeconds);
             throw new GamesException(ErrorCode.SCORE_REJECTED);
         }
