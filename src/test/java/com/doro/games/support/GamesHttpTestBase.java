@@ -36,6 +36,7 @@ public abstract class GamesHttpTestBase {
     protected static final String SITE = "https://games.test";
     protected static final String COOKIE = "doro_games_session";
     protected static final String CSRF = "X-Games-Csrf";
+    protected static final String LOGIN_COOKIE = "doro_games_login";
     protected static final String CLIENT_ID = "doro-games";
 
     protected static final FakeIam IAM = startIam();
@@ -69,6 +70,7 @@ public abstract class GamesHttpTestBase {
         jwks.registerKey(FakeIam.KID, IAM.publicKey());
         IAM.rejectRefresh = false;
         IAM.unavailable = false;
+        IAM.forcedTokenStatus = 0;
         IAM.accessTtlSeconds = 900;
     }
 
@@ -105,7 +107,8 @@ public abstract class GamesHttpTestBase {
         return new TestUser(id, email, login(id, email, null));
     }
 
-    protected record StartedLogin(String state, String challenge, String location) {}
+    /** loginCookie: 로그인 시작 때 이 브라우저가 받은 '로그인 진행 중' 쿠키 값(콜백이 같은 브라우저에서 왔는지 대조된다). */
+    protected record StartedLogin(String state, String challenge, String location, String loginCookie) {}
 
     protected StartedLogin startLogin(String returnPath) throws Exception {
         var request = get("/api/v1/bff/login");
@@ -115,7 +118,22 @@ public abstract class GamesHttpTestBase {
         MockHttpServletResponse response = mockMvc.perform(request).andExpect(status().isFound()).andReturn().getResponse();
         String location = response.getHeader("Location");
         var params = UriComponentsBuilder.fromUriString(location).build().getQueryParams();
-        return new StartedLogin(params.getFirst("state"), params.getFirst("code_challenge"), location);
+        String loginCookie = null;
+        for (String header : response.getHeaders("Set-Cookie")) {
+            if (header.startsWith(LOGIN_COOKIE + "=")) {
+                loginCookie = header.substring((LOGIN_COOKIE + "=").length(), header.indexOf(';'));
+            }
+        }
+        return new StartedLogin(params.getFirst("state"), params.getFirst("code_challenge"), location, loginCookie);
+    }
+
+    /** 로그인을 시작한 바로 그 브라우저(로그인 진행 중 쿠키 포함)에서 콜백을 보낸다. */
+    protected MockHttpServletResponse callback(String code, StartedLogin started) throws Exception {
+        var request = get("/api/v1/bff/callback").param("code", code).param("state", started.state());
+        if (started.loginCookie() != null) {
+            request.cookie(new Cookie(LOGIN_COOKIE, started.loginCookie()));
+        }
+        return mockMvc.perform(request).andReturn().getResponse();
     }
 
     protected MockHttpServletResponse callback(String code, String state) throws Exception {
@@ -132,7 +150,7 @@ public abstract class GamesHttpTestBase {
     protected String login(UUID userId, String email, String returnPath) throws Exception {
         StartedLogin started = startLogin(returnPath);
         String code = IAM.issueCode(userId, email, started.challenge(), CLIENT_ID);
-        MockHttpServletResponse response = callback(code, started.state());
+        MockHttpServletResponse response = callback(code, started);
         assertThat(response.getStatus()).isEqualTo(302);
         return cookieValueOf(response);
     }

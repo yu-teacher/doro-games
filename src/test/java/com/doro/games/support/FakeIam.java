@@ -35,6 +35,8 @@ public final class FakeIam implements AutoCloseable {
     public volatile String lastRevokedToken;
     public volatile boolean rejectRefresh;
     public volatile boolean unavailable;
+    /** 0 이 아니면 토큰 엔드포인트가 이 상태 코드로 응답한다(예: 429 속도 제한). */
+    public volatile int forcedTokenStatus;
     public volatile long accessTtlSeconds = 900;
 
     public FakeIam() throws Exception {
@@ -46,6 +48,10 @@ public final class FakeIam implements AutoCloseable {
             Map<String, String> form = readForm(exchange.getRequestBody().readAllBytes());
             if (unavailable) {
                 respond(exchange, 503, "{}");
+                return;
+            }
+            if (forcedTokenStatus != 0) {
+                respond(exchange, forcedTokenStatus, "{}");
                 return;
             }
             if ("authorization_code".equals(form.get("grant_type"))) {
@@ -132,6 +138,22 @@ public final class FakeIam implements AutoCloseable {
             exchange.getResponseBody().write(bytes);
         }
         exchange.close();
+    }
+
+    /** 이미 만료된 액세스 토큰(서명은 유효). 토큰이 만료된 세션을 시간 흐름에 기대지 않고 만들 때 쓴다. */
+    public String expiredAccessToken(UUID userId, String email, String clientId) {
+        long now = System.currentTimeMillis();
+        return Jwts.builder()
+                .header().keyId(KID).and()
+                .subject(userId.toString())
+                .claim("email", email)
+                .claim("sid", UUID.randomUUID().toString())
+                .claim("role", "USER")
+                .claim("cid", clientId)
+                .issuedAt(new Date(now - 7_200_000))
+                .expiration(new Date(now - 3_600_000))
+                .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
+                .compact();
     }
 
     public static String s256(String verifier) {
