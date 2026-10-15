@@ -3,6 +3,7 @@ package com.doro.games.domain.auth;
 import com.doro.games.domain.auth.repository.AuthSessionRepository;
 import com.doro.games.domain.auth.repository.LoginAttemptRepository;
 import com.doro.games.support.FakeIam;
+import com.hunnit_beasts.doro.sdk.bff.BffAuthService;
 import com.doro.games.support.GamesHttpTestBase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -64,7 +65,7 @@ class BffLoginFlowTest extends GamesHttpTestBase {
         StartedLogin started = startLogin("/maps/42");
         String code = IAM.issueCode(userId, newEmail(), started.challenge(), "doro-games");
 
-        MockHttpServletResponse response = callback(code, started.state());
+        MockHttpServletResponse response = callback(code, started);
 
         assertThat(response.getStatus()).isEqualTo(302);
         assertThat(response.getHeader("Location")).isEqualTo("/games/maps/42");
@@ -86,8 +87,8 @@ class BffLoginFlowTest extends GamesHttpTestBase {
         StartedLogin started = startLogin(null);
         String code = IAM.issueCode(UUID.randomUUID(), newEmail(), started.challenge(), "doro-games");
 
-        assertThat(callback(code, started.state()).getHeader("Set-Cookie")).isNotNull();
-        MockHttpServletResponse replay = callback(IAM.issueCode(UUID.randomUUID(), newEmail(), started.challenge(), "doro-games"), started.state());
+        assertThat(callback(code, started).getHeader("Set-Cookie")).isNotNull();
+        MockHttpServletResponse replay = callback(IAM.issueCode(UUID.randomUUID(), newEmail(), started.challenge(), "doro-games"), started);
 
         assertThat(replay.getHeader("Location")).isEqualTo("/games/?login_error=failed");
     }
@@ -100,7 +101,8 @@ class BffLoginFlowTest extends GamesHttpTestBase {
                 .isEqualTo("/games/?login_error=failed");
         MockHttpServletResponse denied = mockMvc.perform(get("/api/v1/bff/callback").param("error", "access_denied")).andReturn().getResponse();
         assertThat(denied.getHeader("Location")).isEqualTo("/games/?login_error=cancelled");
-        assertThat(denied.getHeader("Set-Cookie")).isNull();
+        assertThat(denied.getHeaders("Set-Cookie")).as("세션 쿠키는 발급하지 않는다(로그인 진행 중 쿠키만 정리)")
+                .allSatisfy(h -> assertThat(h).startsWith("doro_games_login=;"));
     }
 
     @Test
@@ -110,11 +112,12 @@ class BffLoginFlowTest extends GamesHttpTestBase {
         // 공격자가 자기 challenge 로 받은 코드를 이 로그인에 끼워 넣는다
         String foreignCode = IAM.issueCode(UUID.randomUUID(), newEmail(), FakeIam.s256("attacker-verifier"), "doro-games");
 
-        MockHttpServletResponse response = callback(foreignCode, started.state());
+        MockHttpServletResponse response = callback(foreignCode, started);
 
         assertThat(response.getHeader("Location")).isEqualTo("/games/?login_error=failed");
-        // 실패하면 쿠키를 발급하지 않고, 이전에 남아 있을 수 있는 쿠키를 지운다(값이 비고 Max-Age=0)
-        assertThat(response.getHeader("Set-Cookie")).startsWith("doro_games_session=;").contains("Max-Age=0");
+        // 실패하면 세션 쿠키를 발급하지 않고, 쓰고 난 '로그인 진행 중' 쿠키만 지운다(이미 로그인한 사용자의 세션 쿠키는 건드리지 않는다)
+        assertThat(response.getHeaders("Set-Cookie")).hasSize(1);
+        assertThat(response.getHeader("Set-Cookie")).startsWith("doro_games_login=;").contains("Max-Age=0");
     }
 
     @Test
@@ -123,7 +126,7 @@ class BffLoginFlowTest extends GamesHttpTestBase {
         StartedLogin started = startLogin(null);
         String code = IAM.issueCode(UUID.randomUUID(), newEmail(), started.challenge(), "some-other-app");
 
-        assertThat(callback(code, started.state()).getHeader("Location")).isEqualTo("/games/?login_error=failed");
+        assertThat(callback(code, started).getHeader("Location")).isEqualTo("/games/?login_error=failed");
     }
 
     @Test
@@ -132,7 +135,7 @@ class BffLoginFlowTest extends GamesHttpTestBase {
         StartedLogin started = startLogin("//evil.example/phish");
         String code = IAM.issueCode(UUID.randomUUID(), newEmail(), started.challenge(), "doro-games");
 
-        assertThat(callback(code, started.state()).getHeader("Location")).isEqualTo("/games/");
+        assertThat(callback(code, started).getHeader("Location")).isEqualTo("/games/");
     }
 
     // ------------------------------------------------------------------ 세션 인증
@@ -309,7 +312,7 @@ class BffLoginFlowTest extends GamesHttpTestBase {
         String code = IAM.issueCode(userId, newEmail(), started.challenge(), "doro-games");
 
         MockHttpServletResponse response = mockMvc.perform(get("/api/v1/bff/callback").param("code", code).param("state", started.state())
-                .cookie(session(first))).andReturn().getResponse();
+                .cookie(session(first), new Cookie(LOGIN_COOKIE, started.loginCookie()))).andReturn().getResponse();
 
         assertThat(cookieValueOf(response)).isNotEqualTo(first);
         assertThat(sessions.findBySessionHash(BffAuthService.sha256Hex(first))).isEmpty();
