@@ -24,6 +24,8 @@ services:
       GAMES_OAUTH_CLIENT_ID: ${GAMES_OAUTH_CLIENT_ID:-doro-games}
       GAMES_OAUTH_AUTHORIZE_URL: ${GAMES_OAUTH_AUTHORIZE_URL:?GAMES_OAUTH_AUTHORIZE_URL must be set in .env}
       GAMES_OAUTH_REDIRECT_URI: ${GAMES_OAUTH_REDIRECT_URI:?GAMES_OAUTH_REDIRECT_URI must be set in .env}
+      # embedded(기본): 로그인·세션을 이 서비스가 한다. gateway: 별도 BFF(doro-bff)가 하고 게이트웨이가 Bearer 를 붙여 준다(docs/BFF.md).
+      GAMES_AUTH_MODE: ${GAMES_AUTH_MODE:-embedded}
       GAMES_SESSION_KEY: ${GAMES_SESSION_KEY:?GAMES_SESSION_KEY must be set in .env}
     networks:
       - doro-network
