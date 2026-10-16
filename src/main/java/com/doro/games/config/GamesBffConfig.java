@@ -2,8 +2,11 @@ package com.doro.games.config;
 
 import com.doro.games.domain.game.ScoringProperties;
 import com.doro.games.domain.user.service.GameUserService;
+import com.doro.games.domain.user.sync.DeletedAccountAnonymizer;
 import com.hunnit_beasts.doro.sdk.bff.BffProperties;
 import com.hunnit_beasts.doro.sdk.bff.BffUserHook;
+import com.hunnit_beasts.doro.sdk.sync.DeletedUserHandler;
+import com.hunnit_beasts.doro.sdk.sync.DeletedUsersProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -47,5 +50,18 @@ public class GamesBffConfig {
     @ConditionalOnEmbeddedBff
     public BffUserHook bffUserHook(GameUserService userService) {
         return user -> userService.getOrCreateUser(user);
+    }
+
+    /** 탈퇴 동기화 설정({@code games.deleted-sync.*}: enabled, page-size, overlap, interval, initial-delay, 타임아웃). 로직은 SDK 가 맡는다. */
+    @Bean
+    @ConfigurationProperties(prefix = "games.deleted-sync")
+    public DeletedUsersProperties deletedUsersProperties() {
+        return new DeletedUsersProperties();
+    }
+
+    /** Doro 에서 영구 탈퇴한 사용자의 게임 프로필을 익명화한다(멱등). embedded·gateway 모드 모두에서 돈다. */
+    @Bean
+    public DeletedUserHandler deletedUserHandler(DeletedAccountAnonymizer anonymizer) {
+        return anonymizer::anonymize;
     }
 }

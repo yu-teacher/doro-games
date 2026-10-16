@@ -46,6 +46,10 @@ public class GameUserService {
     @Transactional
     public UserProfileResponse updateProfile(DoroUser doroUser, UpdateProfileRequest request) {
         GameUser user = getOrCreateUser(doroUser);
+        // 탈퇴 익명화된 사용자가 아직 유효한 토큰으로 이름을 되살리지 못하게 한다.
+        if (user.isDeleted()) {
+            throw new GamesException(ErrorCode.USER_NOT_FOUND);
+        }
         String nickname = request.nickname().strip();
         if (nickname.isEmpty() || nickname.codePoints().anyMatch(Character::isISOControl)) {
             throw new GamesException(ErrorCode.INVALID_INPUT, "닉네임에 사용할 수 없는 문자가 있습니다.");
