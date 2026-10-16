@@ -40,6 +40,21 @@ public class GameUser {
         this.username = username;
     }
 
+    /** 연동된 Doro 계정이 영구 탈퇴해 개인정보를 익명화한 시각. null 이면 정상 사용자다. */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    /** 탈퇴 익명화: 사용자명·닉네임을 바꾸고 시각을 남긴다. 색은 ID 에서 만든 값이라 개인정보가 아니다. */
+    public void anonymize(String username, String nickname, Instant now) {
+        this.username = username;
+        this.nickname = nickname;
+        this.deletedAt = now;
+    }
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
