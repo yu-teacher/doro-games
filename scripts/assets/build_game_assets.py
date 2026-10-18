@@ -165,15 +165,24 @@ def encode(im: Image.Image, fmt: str) -> bytes:
 
 def build(spec: dict, source: Path, out: Path) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    manifest: dict = {"version": int(time.time()), "sprites": {}}
-    for key, entry in spec["sprites"].items():
-        if not SAFE_KEY.match(key):
-            raise ValueError(f"키 이름이 올바르지 않다: {key}")
+    manifest: dict = {"version": int(time.time()), "sprites": {}, "variants": {}}
+
+    def emit(key: str, entry: dict) -> dict:
         im, fmt = process(entry, source)
         data = encode(im, fmt)
         name = f"{key}-{hashlib.sha1(data).hexdigest()[:10]}.webp"
         (out / name).write_bytes(data)
-        manifest["sprites"][key] = {"file": name, "w": im.width, "h": im.height}
+        return {"file": name, "w": im.width, "h": im.height}
+
+    for key, entry in spec["sprites"].items():
+        if not SAFE_KEY.match(key):
+            raise ValueError(f"키 이름이 올바르지 않다: {key}")
+        manifest["sprites"][key] = emit(key, entry)
+    # 같은 역할의 그림 여러 장(배경 띠, 적 의상, 보스 모습). 게임이 번호로 골라 쓴다
+    for key, entries in spec.get("variants", {}).items():
+        if not SAFE_KEY.match(key):
+            raise ValueError(f"키 이름이 올바르지 않다: {key}")
+        manifest["variants"][key] = [emit(key, entry) for entry in entries]
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return manifest
 
@@ -181,10 +190,11 @@ def build(spec: dict, source: Path, out: Path) -> dict:
 def preview(manifest: dict, out: Path, target: Path) -> None:
     """결과를 어두운 배경 위에 늘어놓아 눈으로 확인할 수 있게 한다."""
     cell = 220
-    keys = list(manifest["sprites"])
+    files = [m["file"] for m in manifest["sprites"].values()] + [m["file"] for v in manifest.get("variants", {}).values() for m in v]
+    keys = list(range(len(files)))
     sheet = Image.new("RGB", (cell * min(4, len(keys)), cell * ((len(keys) + 3) // 4)), (30, 40, 60))
     for i, key in enumerate(keys):
-        im = Image.open(out / manifest["sprites"][key]["file"]).convert("RGBA")
+        im = Image.open(out / files[key]).convert("RGBA")
         im.thumbnail((cell - 10, cell - 10))
         sheet.paste(im, ((i % 4) * cell + 5, (i // 4) * cell + 5), im)
     sheet.save(target, quality=85)
@@ -201,6 +211,9 @@ def main(argv: list[str]) -> int:
     manifest = build(spec, args.source, args.out)
     for key, meta in manifest["sprites"].items():
         print(f"{key:8s} {meta['file']}  {meta['w']}x{meta['h']}")
+    for key, metas in manifest["variants"].items():
+        for i, meta in enumerate(metas):
+            print(f"{key}[{i}]".ljust(8) + f" {meta['file']}  {meta['w']}x{meta['h']}")
     if args.preview:
         preview(manifest, args.out, args.preview)
     return 0

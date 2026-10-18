@@ -50,5 +50,150 @@
       "cutout": "none",
       "width": 540
     }
+  },
+  "variants": {
+    "bg": [
+      {
+        "src": "backgrounds/backgrounds-009-forest-eggs.gif",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-001-grassland-house.jpg",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-016-meadow-sun.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-011-autumn-road.jpg",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-014-pumpkin-field.jpg",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-005-fantasy-town.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-012-snow-hotspring.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-017-beach-balloon.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-006-clouds.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-013-black-hole.png",
+        "cutout": "none",
+        "width": 540
+      }
+    ],
+    "grunt": [
+      {
+        "src": "characters/characters-011-flying-swarm.png",
+        "cutout": "adaptive",
+        "height": 96,
+        "crop": [
+          0.14,
+          0.38,
+          0.56,
+          0.8
+        ]
+      },
+      {
+        "src": "costumes/costumes-026-chicken-suit.png",
+        "cutout": "adaptive",
+        "height": 96,
+        "crop": [
+          0,
+          0.06,
+          1,
+          1
+        ]
+      },
+      {
+        "src": "costumes/costumes-033-bunny-onesie.png",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-004-hardhat.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-002-hanbok.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-018-cowboy-gun.png",
+        "cutout": "adaptive",
+        "height": 96
+      }
+    ],
+    "brute": [
+      {
+        "src": "characters/characters-018-slime.gif",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-022-shark-suit.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-032-dino-onesie.png",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-013-watermelon-helmet.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      }
+    ],
+    "boss": [
+      {
+        "src": "characters/characters-024-buff-boss.jpg",
+        "cutout": "adaptive",
+        "height": 300,
+        "edges": [
+          "top"
+        ]
+      },
+      {
+        "src": "costumes/costumes-003-saiyan-armor.jpg",
+        "cutout": "adaptive",
+        "height": 300
+      },
+      {
+        "src": "costumes/costumes-023-royal-robe.png",
+        "cutout": "adaptive",
+        "height": 300
+      },
+      {
+        "src": "costumes/costumes-020-statue-of-liberty.png",
+        "cutout": "adaptive",
+        "height": 300
+      }
+    ]
   }
 }

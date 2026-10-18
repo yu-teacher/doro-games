@@ -12,12 +12,14 @@ import {
   isInfinite,
   LANE_COUNT,
   LANE_WIDTH,
+  STAGE_BOSS_EVERY,
   type Enemy,
   type Gate,
   type ItemKind,
   type OrangeState,
 } from './engine';
 import { formatCount } from './format';
+import { variantOf } from './assets';
 import { BOSS_NAME, GATE_TITLES, HIDDEN_TEXT, HIDDEN_TITLE, WARN_BOSS, gateValueText, isTrap, pick, rankTitle } from './jokes';
 import { HORIZON_Y, PLAYER_Y, VIEW, project } from './view';
 
@@ -160,9 +162,9 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, key: SpriteKey, cx: numb
 /** 전용 그림이 없는 적이 대신 쓰는 그림(그림도 없으면 도형) */
 const SPRITE_FALLBACK: Partial<Record<SpriteKey, SpriteKey>> = { runner: 'swarm', sniper: 'slime' };
 
-function sprite(ctx: CanvasRenderingContext2D, sprites: Sprites, key: SpriteKey, cx: number, cy: number, w: number, h: number): void {
+function sprite(ctx: CanvasRenderingContext2D, sprites: Sprites, key: SpriteKey, cx: number, cy: number, w: number, h: number, override?: HTMLImageElement): void {
   const fallback = SPRITE_FALLBACK[key];
-  const image = sprites[key] ?? (fallback ? sprites[fallback] : undefined);
+  const image = override ?? sprites[key] ?? (fallback ? sprites[fallback] : undefined);
   if (image) {
     drawImage(ctx, image, cx, cy, w, h);
   } else {
@@ -180,7 +182,10 @@ function shadow(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number
 // ---------------------------------------------------------------------------------------------- 배경과 도로
 
 function drawBackdrop(ctx: CanvasRenderingContext2D, scene: Scene): void {
-  const bg = scene.sprites.bg;
+  // 10스테이지마다 배경이 바뀌고, 무한 모드에서는 마지막(가장 어두운) 배경에 머문다
+  const bgList = scene.sprites.variants?.bg;
+  const band = Math.floor((scene.state.stage - 1) / STAGE_BOSS_EVERY);
+  const bg = bgList && bgList.length > 1 ? (isInfinite(scene.state.stage) ? bgList[bgList.length - 1] : bgList[band % (bgList.length - 1)]) : variantOf(scene.sprites, 'bg', 0);
   const gradient = ctx.createLinearGradient(0, 0, 0, VIEW.height);
   gradient.addColorStop(0, PALETTE.skyTop);
   gradient.addColorStop(1, PALETTE.skyBottom);
@@ -297,6 +302,20 @@ function drawBoulder(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
   text(ctx, formatCount(enemy.hp), at.x, cy + radius * 0.1, Math.max(10, radius * (formatCount(enemy.hp).length > 5 ? 0.46 : 0.62)), '#fff');
 }
 
+/** 적마다 다른 의상: 졸개·덩치는 개체 번호로, 보스는 몇 번째 보스인지로 고른다(달리기·저격수는 기본 그림) */
+function enemySkin(scene: Scene, enemy: Enemy): HTMLImageElement | undefined {
+  if (enemy.kind === 'grunt') {
+    return variantOf(scene.sprites, 'grunt', enemy.seed);
+  }
+  if (enemy.kind === 'brute') {
+    return variantOf(scene.sprites, 'brute', enemy.seed);
+  }
+  if (enemy.kind === 'boss') {
+    return variantOf(scene.sprites, 'boss', Math.floor(scene.state.stage / STAGE_BOSS_EVERY) - 1);
+  }
+  return undefined;
+}
+
 function drawActor(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): void {
   const at = project(enemy.x, enemy.z);
   const key: SpriteKey = enemy.kind === 'brute' ? 'slime' : enemy.kind === 'boss' ? 'boss' : enemy.kind === 'runner' ? 'runner' : enemy.kind === 'sniper' ? 'sniper' : 'swarm';
@@ -308,11 +327,12 @@ function drawActor(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): v
   if (enemy.shielded > 0) {
     ctx.globalAlpha = 0.7;
   }
-  sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w);
+  const skin = enemySkin(scene, enemy);
+  sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w, skin);
   if (enemy.flash > 0) {
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.5;
-    sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w);
+    sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w, skin);
   }
   ctx.restore();
   if (enemy.shielded > 0) {
