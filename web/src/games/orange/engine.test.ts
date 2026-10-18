@@ -367,3 +367,46 @@ describe('결정성과 정수', () => {
     expect(PX).toBe(100);
   });
 });
+
+describe('게이트 통과와 난이도', () => {
+  it('총알은 게이트를 통과해 뒤에 있는 적을 맞힌다', () => {
+    const state = emptied();
+    state.player.x = px(40);
+    state.gates.push({ id: state.nextId++, y: px(420), left: effect('shotsUp', 2), right: effect('dmgUp', 1), used: false });
+    const enemy = enemyAt(state, 'swarm', px(40), px(200), 50);
+    play(state, 45, () => ({ targetX: px(40) }));
+    expect(state.gates[0].left.hits).toBeGreaterThan(0);
+    expect(enemy.hp).toBeLessThan(50);
+  });
+
+  it('총알 하나는 한 게이트를 한 번만 센다(게이트 안에서 여러 프레임을 보내도)', () => {
+    const state = emptied();
+    state.player.x = px(40);
+    state.player.shots = 1;
+    state.player.interval = 1000;
+    const gate = { id: state.nextId++, y: px(400), left: effect('shotsUp', 2), right: effect('dmgUp', 1), used: false };
+    state.gates.push(gate);
+    play(state, 60, () => ({ targetX: px(40) }));
+    expect(gate.left.hits).toBe(1);
+  });
+
+  it('체력 배율은 정수이고 갈수록 가속해서 커진다(끝없는 모드가 결국 끝나도록)', () => {
+    const percents = Array.from({ length: 40 }, (_, i) => hpScalePercent(i + 1));
+    percents.forEach((p) => expect(Number.isInteger(p)).toBe(true));
+    const early = percents[10] - percents[9];
+    const late = percents[39] - percents[38];
+    expect(late).toBeGreaterThan(early * 5);
+  });
+
+  it('총알 수와 공격력에는 상한이 있다', () => {
+    const state = emptied();
+    state.player.shots = PLAYER.maxShots;
+    state.player.damage = PLAYER.maxDamage;
+    state.gates.push({ id: state.nextId++, y: PLAYER.y - px(70), left: effect('shotsMul', 2), right: effect('dmgUp', 50), used: false });
+    play(state, 80, () => ({ targetX: px(40) }));
+    expect(state.player.shots).toBe(PLAYER.maxShots);
+    state.gates.push({ id: state.nextId++, y: PLAYER.y - px(70), left: effect('dmgUp', 50), right: effect('shotsUp', 1), used: false });
+    play(state, 80, () => ({ targetX: px(40) }));
+    expect(state.player.damage).toBe(PLAYER.maxDamage);
+  });
+});

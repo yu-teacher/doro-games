@@ -24,6 +24,9 @@
     "boss": {
       "src": "characters/characters-024-buff-boss.jpg",
       "cutout": "adaptive",
+      "edges": [
+        "top"
+      ],
       "height": 300
     },
     "chicken": {

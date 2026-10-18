@@ -25,12 +25,12 @@ export const PLAYER = {
   hitHeight: px(26),
   y: px(572),
   speed: px(8),
-  startShots: 3,
-  startInterval: 10,
+  startShots: 2,
+  startInterval: 12,
   startDamage: 1,
-  maxShots: 40,
+  maxShots: 16,
   minInterval: 4,
-  maxDamage: 99,
+  maxDamage: 16,
   maxShield: 2,
   invulnTicksAfterShield: 60,
 } as const;
@@ -39,8 +39,8 @@ const BULLET = { width: px(6), height: px(14), speed: px(14), fanStep: 55, maxSp
 
 const WAVE = {
   /** 줄 사이 간격(틱): 웨이브가 올라가면 촘촘해진다 */
-  rowGapStart: 84,
-  rowGapMin: 38,
+  rowGapStart: 70,
+  rowGapMin: 28,
   baseRows: 4,
   maxExtraRows: 6,
   tail: 150,
@@ -70,22 +70,23 @@ const COMBO = { window: 90, perStep: 10, maxMultiplier: 5 } as const;
 
 /** 종류별 기본 값. hp 는 웨이브에 따라 커진다(hpScale). */
 const ENEMY = {
-  swarm: { w: px(30), h: px(30), hp: 3, vy: 90, points: 10 },
-  mini: { w: px(22), h: px(22), hp: 4, vy: 110, points: 5 },
-  slime: { w: px(40), h: px(34), hp: 12, vy: 60, points: 40 },
-  wall: { w: px(120), h: px(36), hp: 40, vy: 40, points: 150 },
-  elite: { w: px(42), h: px(42), hp: 26, vy: 80, points: 200 },
-  boss: { w: px(140), h: px(130), hp: 420, vy: 100, points: 2000 },
+  swarm: { w: px(30), h: px(30), hp: 3, vy: 120, points: 10 },
+  mini: { w: px(22), h: px(22), hp: 4, vy: 130, points: 5 },
+  slime: { w: px(40), h: px(34), hp: 12, vy: 80, points: 40 },
+  wall: { w: px(120), h: px(36), hp: 40, vy: 55, points: 150 },
+  elite: { w: px(42), h: px(42), hp: 26, vy: 100, points: 200 },
+  boss: { w: px(140), h: px(130), hp: 700, vy: 100, points: 2000 },
 } as const;
 
-const SCALE = { hpPerWave: 16, hpPerWaveSquared: 5, speedPerWave: 3, maxSpeedBonus: 110 } as const;
+/** 웨이브마다 체력 배율(%)이 growthPercent 만큼 곱해지고 flat 만큼 더해진다(지수 증가라 어느 시점엔 반드시 못 막게 된다). */
+const SCALE = { growthPercent: 113, flat: 8, speedPerWave: 4, maxSpeedBonus: 160 } as const;
 
 const BOSS = {
   hoverY: px(130),
-  moveSpeed: px(1.5),
-  throwEvery: 90,
-  throwEveryPhase2: 60,
-  shotSpeed: px(4),
+  moveSpeed: px(2),
+  throwEvery: 75,
+  throwEveryPhase2: 48,
+  shotSpeed: px(4.6),
   shotSize: px(22),
   shieldEvery: 480,
   shieldTicks: 120,
@@ -144,6 +145,8 @@ export interface Bullet {
   y: number;
   vx: number;
   damage: number;
+  /** 마지막으로 값을 키워 준 게이트(같은 게이트를 지나는 동안 두 번 세지 않으려고) */
+  gateId: number;
 }
 
 export interface EnemyShot {
@@ -289,9 +292,15 @@ export function createState(seed: number): OrangeState {
 }
 
 /** 웨이브 번호에 따른 체력 배율(%). */
+const hpScaleCache: number[] = [100];
+
 export function hpScalePercent(wave: number): number {
-  const n = wave - 1;
-  return 100 + n * SCALE.hpPerWave + n * n * SCALE.hpPerWaveSquared;
+  const n = Math.max(0, wave - 1);
+  while (hpScaleCache.length <= n) {
+    // 정수 연산만 쓴다: 이전 값 * 배수 / 100 (내림) + 고정 증가
+    hpScaleCache.push(Math.floor((hpScaleCache[hpScaleCache.length - 1] * SCALE.growthPercent) / 100) + SCALE.flat);
+  }
+  return hpScaleCache[n];
 }
 
 function scaledHp(base: number, wave: number): number {
@@ -313,15 +322,15 @@ export function effect(kind: GateKind, value: number): GateEffect {
 function goodGate(state: OrangeState, wave: number): GateEffect {
   const roll = rand(state, 100);
   if (roll < 38) {
-    return effect('shotsUp', 2 + Math.floor(wave / 4));
+    return effect('shotsUp', 2 + Math.floor(wave / 6));
   }
-  if (roll < 56 && wave >= 2) {
+  if (roll < 56 && wave >= 4) {
     return effect('shotsMul', 2);
   }
   if (roll < 78) {
     return effect('rateUp', 2);
   }
-  return effect('dmgUp', 1 + Math.floor(wave / 6));
+  return effect('dmgUp', 1 + Math.floor(wave / 8));
 }
 
 function trapGate(state: OrangeState, wave: number): GateEffect {
@@ -346,7 +355,7 @@ function planNormalWave(state: OrangeState, wave: number): void {
       const j = rand(state, i + 1);
       [lanes[i], lanes[j]] = [lanes[j], lanes[i]];
     }
-    const count = 1 + rand(state, 1 + Math.min(3, Math.ceil(wave / 2)));
+    const count = 1 + rand(state, 2 + Math.min(3, Math.ceil(wave / 2)));
     for (let k = 0; k < count; k += 1) {
       const roll = rand(state, 100);
       let kind: EnemyKind = 'swarm';
@@ -543,6 +552,7 @@ function fire(state: OrangeState): void {
       y: PLAYER.y - PLAYER.height / 2,
       vx: Math.trunc((centered * BULLET.fanStep) / 2),
       damage: p.damage,
+      gateId: 0,
     });
   }
   p.cooldown = interval - 1;
@@ -556,19 +566,16 @@ function moveBullets(state: OrangeState): void {
     if (bullet.y < -BULLET.height || bullet.x < -px(20) || bullet.x > FIELD.width + px(20)) {
       continue;
     }
-    // 게이트: 총알을 막고 값을 키운다
-    let consumed = false;
+    // 게이트: 총알은 그대로 통과하고, 지나가며 이로운 쪽 값을 키운다(총알마다 게이트당 한 번)
     for (const gate of state.gates) {
-      if (gate.used || Math.abs(bullet.y - gate.y) * 2 >= GATE.height + BULLET.height) {
+      if (gate.used || bullet.gateId === gate.id || Math.abs(bullet.y - gate.y) * 2 >= GATE.height + BULLET.height) {
         continue;
       }
       growGate(bullet.x < FIELD.width / 2 ? gate.left : gate.right);
-      consumed = true;
+      bullet.gateId = gate.id;
       break;
     }
-    if (consumed) {
-      continue;
-    }
+    let consumed = false;
     // 적: 먼저 닿은 한 마리에게 피해를 준다
     for (const enemy of state.enemies) {
       if (overlap(bullet.x, bullet.y, BULLET.width, BULLET.height, enemy.x, enemy.y, enemy.w, enemy.h)) {

@@ -48,6 +48,36 @@ class CutoutTest(unittest.TestCase):
             self.assertLess(trimmed.height, 120)
 
 
+class EdgesTest(unittest.TestCase):
+    def _bust(self) -> Image.Image:
+        """위는 파란 하늘, 흰 몸이 아래·양옆 가장자리에 닿아 있다(잘린 상반신)."""
+        im = Image.new("RGB", (120, 120), (80, 170, 255))
+        d = ImageDraw.Draw(im)
+        d.rectangle((0, 60, 119, 119), fill=(255, 255, 255))  # 테두리 없이 가장자리에 닿는다
+        d.line((0, 60, 119, 60), fill=(0, 0, 0), width=3)  # 하늘과 몸 사이의 윤곽선
+        d.ellipse((40, 20, 80, 70), fill=(255, 150, 190), outline=(0, 0, 0), width=3)
+        return im
+
+    def test_모든_가장자리를_쓰면_가장자리에_닿은_흰_몸이_지워진다(self):
+        out = b.cut_out(self._bust())
+        self.assertEqual(out.getpixel((20, 100))[3], 0)  # 몸(흰색)이 배경으로 오인되어 사라진다
+
+    def test_위쪽만_기준으로_삼으면_몸이_남는다(self):
+        out = b.cut_out(self._bust(), ("top",))
+        self.assertEqual(out.getpixel((5, 5))[3], 0)  # 하늘은 지워진다
+        self.assertEqual(out.getpixel((20, 100))[3], 255)  # 몸은 남는다
+        self.assertEqual(out.getpixel((60, 45))[3], 255)
+
+    def test_알_수_없는_가장자리는_거절한다(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample(root / "a.png")
+            with self.assertRaises(ValueError):
+                b.process({"src": "a.png", "cutout": "adaptive", "edges": ["middle"], "height": 10}, root)
+            with self.assertRaises(ValueError):
+                b.process({"src": "a.png", "cutout": "adaptive", "edges": [], "height": 10}, root)
+
+
 class BuildTest(unittest.TestCase):
     def test_manifest_와_해시_이름_파일이_만들어진다(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -8,6 +8,8 @@
   src      원본 파일(GIF 는 첫 프레임을 쓴다)
   crop     [x0, y0, x1, y1] 비율(0~1)로 자를 영역(선택)
   cutout   "adaptive"(바깥 배경 지우기) | "none"
+  edges    배경 기준으로 삼을 가장자리 ["top","bottom","left","right"] (기본: 모두).
+           그림이 이미지 가장자리에 닿아 있으면(잘린 상반신 등) 닿은 쪽을 빼야 몸까지 배경으로 착각하지 않는다
   height   (또는 width) 결과 크기(px). 비율은 유지한다
 출력 파일 이름에는 내용 해시를 넣는다(영구 캐시해도 그림을 바꾸면 이름이 바뀐다).
 필요: Pillow (pip install pillow)
@@ -31,6 +33,7 @@ STEP_TOL = 14  # 이웃 픽셀과의 색 차이가 이 안이면 같은 배경 �
 PALETTE_TOL = 60  # 테두리에서 뽑은 배경 색들과의 거리가 이 안이어야 배경이다
 PALETTE_MIN_SHARE = 0.01  # 테두리 픽셀의 이 비율 이상을 차지하는 색만 배경 색으로 본다
 ALPHA_FLOOR = 10
+ALL_EDGES = ("top", "bottom", "left", "right")
 SAFE_KEY = re.compile(r"^[a-z][a-z0-9-]*$")
 
 
@@ -38,32 +41,41 @@ def _dist(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
 
 
-def border_palette(im: Image.Image) -> list[tuple[int, int, int]]:
-    """이미지 테두리에서 흔한 색(배경 색 후보)을 뽑는다."""
+def edge_pixels(im: Image.Image, edges: tuple[str, ...]) -> list[tuple[int, int]]:
+    """고른 가장자리의 좌표들."""
     w, h = im.size
+    coords: list[tuple[int, int]] = []
+    if "top" in edges:
+        coords += [(x, 0) for x in range(w)]
+    if "bottom" in edges:
+        coords += [(x, h - 1) for x in range(w)]
+    if "left" in edges:
+        coords += [(0, y) for y in range(h)]
+    if "right" in edges:
+        coords += [(w - 1, y) for y in range(h)]
+    return coords
+
+
+def border_palette(im: Image.Image, edges: tuple[str, ...] = ALL_EDGES) -> list[tuple[int, int, int]]:
+    """고른 가장자리에서 흔한 색(배경 색 후보)을 뽑는다."""
     px = im.load()
-    border = [px[x, 0] for x in range(w)] + [px[x, h - 1] for x in range(w)]
-    border += [px[0, y] for y in range(h)] + [px[w - 1, y] for y in range(h)]
+    border = [px[x, y] for x, y in edge_pixels(im, edges)]
     counts = Counter((r >> 4, g >> 4, b >> 4) for r, g, b in border)
     keep = [k for k, n in counts.items() if n / len(border) >= PALETTE_MIN_SHARE]
     return [((r << 4) + 8, (g << 4) + 8, (b << 4) + 8) for r, g, b in keep]
 
 
-def background_mask(im: Image.Image) -> bytearray:
-    """테두리에서 이어지는 배경 픽셀을 1 로 표시한다. 검은 윤곽선처럼 색이 확 바뀌는 곳에서 멈춘다."""
+def background_mask(im: Image.Image, edges: tuple[str, ...] = ALL_EDGES) -> bytearray:
+    """고른 가장자리에서 이어지는 배경 픽셀을 1 로 표시한다. 검은 윤곽선처럼 색이 확 바뀌는 곳에서 멈춘다."""
     w, h = im.size
     px = im.load()
-    palette = border_palette(im)
+    palette = border_palette(im, edges)
     mask = bytearray(w * h)
 
     def near_palette(c: tuple[int, int, int]) -> bool:
         return any(_dist(c, p) <= PALETTE_TOL for p in palette)
 
-    queue: deque[tuple[int, int]] = deque()
-    for x in range(w):
-        queue.extend(((x, 0), (x, h - 1)))
-    for y in range(h):
-        queue.extend(((0, y), (w - 1, y)))
+    queue: deque[tuple[int, int]] = deque(edge_pixels(im, edges))
     seeded = set(queue)
     while queue:
         x, y = queue.popleft()
@@ -82,11 +94,11 @@ def background_mask(im: Image.Image) -> bytearray:
     return mask
 
 
-def cut_out(im: Image.Image) -> Image.Image:
+def cut_out(im: Image.Image, edges: tuple[str, ...] = ALL_EDGES) -> Image.Image:
     """바깥 배경을 투명하게 만든다. 가장자리는 한 픽셀 깎고 살짝 흐려서 배경색 테두리를 줄인다."""
     rgb = im.convert("RGB")
     w, h = rgb.size
-    mask = background_mask(rgb)
+    mask = background_mask(rgb, edges)
     alpha = Image.new("L", (w, h))
     alpha.putdata([0 if m else 255 for m in mask])
     alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.7))
@@ -125,8 +137,11 @@ def process(entry: dict, source: Path) -> tuple[Image.Image, str]:
             raise ValueError(f"crop 비율이 올바르지 않다: {crop}")
         im = im.crop((round(x0 * im.width), round(y0 * im.height), round(x1 * im.width), round(y1 * im.height)))
     cutout = entry.get("cutout", "none")
+    edges = tuple(entry.get("edges", ALL_EDGES))
+    if not edges or any(e not in ALL_EDGES for e in edges):
+        raise ValueError(f"edges 는 {ALL_EDGES} 중에서 골라야 한다: {edges}")
     if cutout == "adaptive":
-        im = trim(cut_out(fit_work_size(im)))
+        im = trim(cut_out(fit_work_size(im), edges))
         fmt = "WEBP"
     elif cutout == "none":
         fmt = "WEBP"

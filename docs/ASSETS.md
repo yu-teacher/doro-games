@@ -11,7 +11,7 @@
 ```
 
 - `scripts/assets/orange-blitz.sprites.json`: **어떤 원본을 어떻게 가공할지**(잘라낼 영역, 배경 제거, 크기). 이 파일만 git 에 있다.
-- `build_game_assets.py`: 배경 제거(바깥 배경만 지움), 트리밍, 크기 조정 후 **내용 해시가 붙은 이름**으로 저장하고 `manifest.json`(키 → 파일) 을 만든다. 같은 입력이면 같은 이름이 나온다.
+- `build_game_assets.py`: 배경 제거(바깥 배경만 지움, 그림이 이미지 가장자리에 닿아 있으면 스펙의 `edges` 로 기준 가장자리를 고른다), 트리밍, 크기 조정 후 **내용 해시가 붙은 이름**으로 저장하고 `manifest.json`(키 → 파일) 을 만든다. 같은 입력이면 같은 이름이 나온다.
 - `upload-game-assets.sh`: 버킷 생성, 읽기 전용 공개 정책(GetObject 만), 업로드. **manifest 를 맨 마지막에 올린다.**
 - 웹(`web/src/games/orange/assets.ts`): 시작할 때 manifest 를 읽어 그림을 불러온다. 알 수 없는 키, 경로를 벗어난 파일 이름, 외부 주소는 버린다.
 
@@ -45,5 +45,5 @@ ssh mini 'bash -s -- --apply --refresh --report-only' < scripts/apply-gateway-ga
 
 ## 알아 둘 점
 - 이 저장소는 공개이므로 그림 파일 자체는 올리지 않는다. 그림의 **사용 권한은 올리는 사람이 책임진다.**
-- 배경 제거는 "테두리에서 이어지는 배경" 만 지운다. 그림 속 구멍(팔 사이 등)은 남고, 배경과 비슷한 색이 윤곽선 없이 맞닿으면 번질 수 있어서 결과를 `--preview` 로 확인한다.
+- 배경 제거는 "테두리에서 이어지는 배경" 만 지운다. 잘린 상반신처럼 그림이 이미지 가장자리에 닿아 있으면 몸의 색이 배경 색으로 잡혀 지워질 수 있어서, 하늘 쪽만 쓰도록 `"edges": ["top"]` 처럼 지정한다(보스가 그렇다). 그림 속 구멍(팔 사이 등)은 남고, 배경과 비슷한 색이 윤곽선 없이 맞닿으면 번질 수 있어서 결과를 `--preview` 로 확인한다.
 - 스크립트 테스트: `python3 -m unittest scripts/assets/test_build_game_assets.py` (Pillow 필요, CI 에는 포함하지 않았다).
