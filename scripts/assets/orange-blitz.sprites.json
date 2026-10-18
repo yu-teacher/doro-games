@@ -1,7 +1,7 @@
 {
   "sprites": {
     "hero": {
-      "src": "costumes/costumes-024-peashooter-hat.webp",
+      "src": "costumes/costumes-018-cowboy-gun.png",
       "cutout": "rembg",
       "height": 128
     },
@@ -141,7 +141,23 @@
         "height": 96
       },
       {
-        "src": "costumes/costumes-018-cowboy-gun.png",
+        "src": "costumes/costumes-009.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-030.png",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-029-maid-broom.gif",
+        "cutout": "rembg",
+        "height": 96,
+        "frames": 8
+      },
+      {
+        "src": "costumes/costumes-025.png",
         "cutout": "adaptive",
         "height": 96
       }
@@ -176,17 +192,17 @@
         "height": 300
       },
       {
-        "src": "costumes/costumes-003-saiyan-armor.jpg",
-        "cutout": "rembg",
-        "height": 300
-      },
-      {
         "src": "costumes/costumes-023-royal-robe.png",
         "cutout": "rembg",
         "height": 300
       },
       {
-        "src": "costumes/costumes-020-statue-of-liberty.png",
+        "src": "costumes/costumes-010.gif",
+        "cutout": "rembg",
+        "height": 300
+      },
+      {
+        "src": "costumes/costumes-025.png",
         "cutout": "rembg",
         "height": 300
       }

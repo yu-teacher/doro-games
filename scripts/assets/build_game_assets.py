@@ -145,10 +145,12 @@ def process_frames(entry: dict, source: Path) -> tuple[Image.Image, int]:
     src = (source / entry["src"]).resolve()
     if source.resolve() not in src.parents:
         raise ValueError(f"원본이 --source 밖을 가리킨다: {entry['src']}")
-    if entry.get("cutout", "none") != "adaptive" or "height" not in entry:
-        raise ValueError("frames 는 cutout=adaptive 와 height 가 필요하다")
+    method = entry.get("cutout", "none")
+    if method not in ("adaptive", "rembg") or "height" not in entry:
+        raise ValueError("frames 는 cutout=adaptive 또는 rembg 와 height 가 필요하다")
     edges = tuple(entry.get("edges", ALL_EDGES))
-    cut = [cut_out(fit_work_size(f), edges) for f in sample_frames(src, int(entry["frames"]))]
+    cutter = rembg_cut if method == "rembg" else (lambda f: cut_out(f, edges))
+    cut = [cutter(fit_work_size(f)) for f in sample_frames(src, int(entry["frames"]))]
     # 모든 장면이 같은 틀을 쓰도록 불투명한 영역의 합집합으로 자른다(그래야 움직일 때 몸이 덜덜 떨리지 않는다)
     boxes = [b for b in (f.getchannel("A").point(lambda v: 255 if v > ALPHA_FLOOR else 0).getbbox() for f in cut) if b]
     if boxes:
