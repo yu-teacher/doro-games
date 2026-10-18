@@ -1,7 +1,7 @@
 import { type EnemyKind, type GameEvent } from './engine';
 import { project } from './view';
 import { formatCount } from './format';
-import { BOMB_QUIPS, BOSS_DOWN, WARN_SUB, WARN_TEXT, INFINITE_LINES, INFINITE_TITLE, BOSS_INTRO, BOSS_NAME, BOSS_SHIELD, GATE_TITLES, gateValueText, isTrap, pick, quipFor } from './jokes';
+import { BOMB_QUIPS, WARN_SUB, WARN_TEXT, INFINITE_LINES, INFINITE_TITLE, bossProfile, GATE_TITLES, gateValueText, isTrap, pick, quipFor } from './jokes';
 
 /** 화면 효과(말풍선, 반짝임, 흔들림). 게임 규칙과 무관하고 엔진의 난수도 쓰지 않는다. 좌표는 px 이다. */
 
@@ -181,18 +181,18 @@ export function applyEvent(fx: Effects, event: GameEvent, rnd: () => number): vo
       if (fx.banner?.title === INFINITE_TITLE) {
         break;
       }
-      fx.banner = { title: BOSS_NAME, sub: pick(BOSS_INTRO, pickIndex), age: 0, life: 150 };
+      fx.banner = { title: bossProfile(event.index).name, sub: pick(bossProfile(event.index).intro, pickIndex), age: 0, life: 150 };
       break;
     case 'bossShield':
       if (event.on) {
-        addText(fx, pick(BOSS_SHIELD, pickIndex), 180, 150, COLORS.orange, 18, 80);
+        addText(fx, pick(bossProfile(event.index).shield, pickIndex), 180, 150, COLORS.orange, 18, 80);
       }
       break;
     case 'bossDown': {
       const at = project(event.x, event.z);
       fx.shake = 22;
       burst(fx, at.x, at.y, COLORS.orange, 60, rnd, 4);
-      fx.banner = { title: `${BOSS_NAME} 격파!`, sub: pick(BOSS_DOWN, pickIndex), age: 0, life: 170 };
+      fx.banner = { title: `${bossProfile(event.index).name} 격파!`, sub: pick(bossProfile(event.index).down, pickIndex), age: 0, life: 170 };
       break;
     }
     case 'over':

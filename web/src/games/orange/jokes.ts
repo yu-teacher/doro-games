@@ -84,10 +84,45 @@ export const SHIELD_BREAK_QUIPS: readonly string[] = ['귤이 대신 맞았다!'
 export const INFINITE_TITLE = '∞ 무한 모드 돌입!';
 export const INFINITE_LINES: readonly string[] = ['여기서부터는 끝이 없어요', '이제부터 도로롱도 모른다', '귤의 끝은 없다', '살아남는 자가 귤을 먹는다'];
 
-export const BOSS_NAME = '근육 도로롱';
-export const BOSS_INTRO: readonly string[] = ['귤은 내 거다', '오늘 하체 하는 날이다', '단백질 없이 귤은 못 먹지', '헬스장 관장 등판', '중량 올린다'];
-export const BOSS_SHIELD: readonly string[] = ['근육 방어!', '지금은 못 때려', '대흉근 막기'];
-export const BOSS_DOWN: readonly string[] = ['단백질이… 부족했나…', '다음엔 닭가슴살 먹고 온다', '근손실이…', '귤은… 너 가져라…'];
+/** 보스 한 명의 이름과 대사. 모습(스프라이트 변형 boss[0..])의 순서와 같아야 한다. */
+export interface BossProfile {
+  name: string;
+  intro: readonly string[];
+  shield: readonly string[];
+  down: readonly string[];
+}
+
+export const BOSSES: readonly BossProfile[] = [
+  {
+    name: '근육 도로롱',
+    intro: ['귤은 내 거다', '오늘 하체 하는 날이다', '단백질 없이 귤은 못 먹지', '헬스장 관장 등판', '중량 올린다'],
+    shield: ['근육 방어!', '지금은 못 때려', '대흉근 막기'],
+    down: ['단백질이… 부족했나…', '다음엔 닭가슴살 먹고 온다', '근손실이…', '귤은… 너 가져라…'],
+  },
+  {
+    name: '폐하 도로롱',
+    intro: ['짐이 귤을 원하노라', '무엄하다!', '수라상에 귤이 빠졌구나', '어좌를 넘보느냐'],
+    shield: ['어명이다!', '곤룡포 방어!', '근접 불가'],
+    down: ['짐의 귤이…', '이 반란을 기억하겠다…', '폐하가… 쓰러졌다…', '귤은… 백성에게…'],
+  },
+  {
+    name: '탐정 도로롱',
+    intro: ['범인은 이 안에 있어', '귤을 훔친 건 너로군', '추리가 끝났다', '수사 개시'],
+    shield: ['증거 인멸!', '트렌치코트 방어', '알리바이 완벽'],
+    down: ['내 추리가… 틀렸다니…', '범인은… 귤이었다…', '사건은 미궁 속으로…', '다음 사건에서 보자…'],
+  },
+  {
+    name: '펭귄 도로롱',
+    intro: ['귤은 남극에도 없다', '뒤뚱뒤뚱 등판', '여기가 내 얼음판이다', '꽥! 아니 펭!'],
+    shield: ['얼음 방벽!', '털이 두껍다', '미끄러워서 안 맞아'],
+    down: ['녹아내린다…', '남극으로 돌아간다…', '생선이 먹고 싶다…', '귤은 시원했다…'],
+  },
+];
+
+/** index 번째 보스(1부터). 모습이 돌아가며 나오는 것과 같은 규칙으로 고른다. */
+export function bossProfile(index: number): BossProfile {
+  return BOSSES[(((index - 1) % BOSSES.length) + BOSSES.length) % BOSSES.length];
+}
 
 export const GAME_OVER_LINES: Record<'touch' | 'shot', readonly string[]> = {
   touch: ['부딪혔다!', '도로롱은 눈물을 닦았다', '한 방이면 끝나는 게 인생', '다음엔 보호막부터 챙기자', '귤 도둑에게 밟혔다', '큰 귤은 피하는 게 상책'],

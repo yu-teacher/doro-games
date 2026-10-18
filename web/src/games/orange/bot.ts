@@ -106,7 +106,8 @@ export function createBot(options: BotOptions = {}): (state: OrangeState) => Ora
 
     const threats = [
       ...state.enemies.map((e) => ({ x: e.x, z: e.z, half: e.w / 2, depth: e.depth / 2 })),
-      ...state.dumbbells.map((d) => ({ x: d.x, z: d.z, half: px(14), depth: px(10) })),
+      // 날아오는 덤벨은 지금 자리가 아니라 닿을 자리(궤도를 보고 예상한 곳)를 피한다
+      ...state.dumbbells.map((d) => ({ x: d.x + Math.trunc((d.vx * d.z) / Math.max(1, d.vz)), z: d.z, half: px(14), depth: px(10) })),
     ].filter((t) => t.z - t.depth < lookAhead && t.z + t.depth > -px(10));
     // 지금 닿을 듯한 것들(깊이가 곧 겹치는 것)이 막고 있는 가로 구간. 그 구간을 가로질러 가면 부딪히므로,
     // 도로롱이 지금 서 있는 빈 구간 안에서만 움직인다(이미 막힌 구간 안이면 어디든 허용: 비상).

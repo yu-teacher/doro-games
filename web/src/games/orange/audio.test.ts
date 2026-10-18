@@ -13,12 +13,12 @@ describe('이벤트 → 소리', () => {
 
   it('보스 처치는 일반 처치음 대신 전용 소리를 낸다', () => {
     expect(soundFor({ t: 'kill', kind: 'boss', x: 0, z: 0, points: 1 })).toBeNull();
-    expect(soundFor({ t: 'bossDown', x: 0, z: 0 })).toBe('bossKill');
+    expect(soundFor({ t: 'bossDown', x: 0, z: 0, index: 1 })).toBe('bossKill');
     expect(soundFor({ t: 'kill', kind: 'grunt', x: 0, z: 0, points: 1 })).toBe('kill');
   });
 
   it('소리가 없는 이벤트도 있다', () => {
-    expect(soundFor({ t: 'bossShield', on: true })).toBeNull();
+    expect(soundFor({ t: 'bossShield', on: true, index: 1 })).toBeNull();
   });
 
   it('말하는 확률은 0~100 이고 판이 끝나면 반드시 말한다', () => {

@@ -13,7 +13,6 @@ import {
   anchorFirepower,
   baseFirepower,
   challengePercent,
-  crowdSpeedBonus,
   damageCap,
   effect,
   firepower,
@@ -26,6 +25,7 @@ import {
   nextUint,
   px,
   runSpeedFor,
+  speedPercent,
   SCALING_STAGE_LIMIT,
   shotsCap,
   step,
@@ -141,8 +141,8 @@ describe('시작과 이동', () => {
     const state = emptied();
     play(state, 10);
     expect(state.scroll).toBe(10 * runSpeedFor(1));
-    expect(runSpeedFor(10)).toBeGreaterThan(runSpeedFor(1));
-    expect(runSpeedFor(999)).toBe(runSpeedFor(999 + 1));
+    expect(runSpeedFor(11)).toBeGreaterThan(runSpeedFor(1));
+    expect(runSpeedFor(999_999)).toBe(runSpeedFor(1_000_000));
   });
 });
 
@@ -271,7 +271,7 @@ describe('적과 점수', () => {
       expect(percents[i]).toBeGreaterThanOrEqual(percents[i - 1]);
     }
     expect(percents[0]).toBeGreaterThanOrEqual(40);
-    expect(percents[79]).toBe(55);
+    expect(percents[79]).toBe(62);
   });
 
   it('기준 화력은 치킨 같은 일시 효과를 빼고 센다', () => {
@@ -847,30 +847,49 @@ describe('무한 모드', () => {
     expect(seen).toEqual([100]);
   });
 
-  it('무한 모드에서는 도전 배율·몰려오는 속도가 스테이지마다 계속 오른다(상한은 안전을 위한 아주 큰 값)', () => {
+  it('무한 모드에서는 도전 배율이 스테이지마다 계속 오른다(상한은 안전을 위한 아주 큰 값)', () => {
     expect(infiniteLevel(99)).toBe(0);
     expect(infiniteLevel(100)).toBe(1);
-    expect(crowdSpeedBonus(99)).toBe(0);
     let previousChallenge = challengePercent(99);
-    let previousSpeed = crowdSpeedBonus(99);
     for (let stage = 100; stage <= 140; stage += 1) {
       expect(challengePercent(stage)).toBeGreaterThan(previousChallenge);
-      expect(crowdSpeedBonus(stage)).toBeGreaterThan(previousSpeed);
-      expect(runSpeedFor(stage)).toBeGreaterThanOrEqual(runSpeedFor(stage - 1));
       previousChallenge = challengePercent(stage);
-      previousSpeed = crowdSpeedBonus(stage);
     }
-    // 상한: 한없이 커지지 않는다(정수 안전)
     expect(challengePercent(10_000_000)).toBe(challengePercent(1_000_000));
-    expect(crowdSpeedBonus(10_000_000)).toBe(crowdSpeedBonus(1_000_000));
   });
 
-  it('몰려오는 적(무리·덩치)의 속도가 무한 모드에서 점점 빨라진다', () => {
+  it('속도는 10스테이지마다 한 단계씩 빨라지고, 한 단계 안에서는 같다', () => {
+    expect(speedPercent(1)).toBe(100);
+    for (let tier = 0; tier < 9; tier += 1) {
+      const first = tier * STAGE_BOSS_EVERY + 1;
+      for (let stage = first; stage < first + STAGE_BOSS_EVERY; stage += 1) {
+        expect(speedPercent(stage)).toBe(speedPercent(first));
+      }
+      expect(speedPercent(first + STAGE_BOSS_EVERY)).toBeGreaterThan(speedPercent(first));
+    }
+    expect(runSpeedFor(11)).toBeGreaterThan(runSpeedFor(10));
+    expect(runSpeedFor(10)).toBe(runSpeedFor(1));
+    // 99 에서 단계가 멈춘다
+    expect(speedPercent(99)).toBe(speedPercent(91));
+  });
+
+  it('100스테이지부터는 레벨마다 일정한 비율로 곱해지는 지수 증가이고 상한이 있다', () => {
+    const base = speedPercent(99);
+    expect(speedPercent(100)).toBeGreaterThanOrEqual(base);
+    // 레벨 10 → 20 → 30 의 증가율이 거의 같다(지수). 곱하는 비율이 같으면 비 (r) 도 같다
+    const r1 = speedPercent(120) / speedPercent(110);
+    const r2 = speedPercent(130) / speedPercent(120);
+    expect(r1).toBeGreaterThan(1.05);
+    expect(Math.abs(r1 - r2)).toBeLessThan(0.03);
+    for (let stage = 100; stage < 200; stage += 1) {
+      expect(speedPercent(stage + 1)).toBeGreaterThanOrEqual(speedPercent(stage));
+    }
+    expect(speedPercent(100_000)).toBe(speedPercent(1_000_000));
+    expect(speedPercent(1_000_000)).toBeLessThanOrEqual(400);
+  });
+
+  it('몰려오는 적(무리·덩치)의 속도도 같은 규칙으로 빨라진다', () => {
     const speedOf = (stage: number): number => {
-      const state = planStage(7, stage % STAGE_BOSS_EVERY === 0 ? stage + 1 : stage);
-      state.queue = [];
-      state.player.shots = 1;
-      state.distance += px(5000);
       const crowdState = createState(7);
       crowdState.stage = stage;
       crowdState.queue = [{ at: 0, kind: 'crowd', x: CENTER, hp: 5, count: 3 }];
@@ -879,9 +898,10 @@ describe('무한 모드', () => {
       step(crowdState, { targetX: CENTER });
       return crowdState.enemies[0].speed;
     };
+    expect(speedOf(11)).toBeGreaterThan(speedOf(10));
+    expect(speedOf(10)).toBe(speedOf(1));
     expect(speedOf(130)).toBeGreaterThan(speedOf(110));
     expect(speedOf(110)).toBeGreaterThan(speedOf(99));
-    expect(speedOf(99)).toBe(speedOf(50));
   });
 });
 

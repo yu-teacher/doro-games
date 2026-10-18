@@ -52,7 +52,13 @@ export const PLAYER = {
 
 const BULLET = { width: px(6), depth: px(10), speed: px(11), fanStep: 28, maxSpan: px(110), spacing: px(7), pierceHits: 2 } as const;
 
-const RUN = { base: px(1.6), perStage: px(0.04), maxBonus: px(1.0), infinitePerLevel: px(0.01), infiniteMax: px(1.2) } as const;
+const RUN = { base: px(1.76) } as const;
+
+/**
+ * 속도는 10스테이지(보스를 잡을 때)마다 한 단계씩 빨라지고, 무한 모드(100~)부터는 레벨마다 일정한 비율로 곱해져 지수로 빨라진다.
+ * 사람이 반응할 수 있는 한계(반응 시간 + 줄을 옮기는 시간)를 넘지 않도록 상한이 있다(engine.test 의 "반응 여유" 로 확인).
+ */
+const SPEED = { tierEvery: 10, tierPercent: 6, maxTier: 9, infiniteGrowthPermille: 1015, maxPercent: 400 } as const;
 
 const STAGE = {
   length: px(900),
@@ -78,14 +84,14 @@ const COMBO = { window: 90, perStep: 10, maxMultiplier: 5 } as const;
 
 /** 종류별 크기·속도·점수. 체력은 지금 내 실제 화력(baseFirepower)에서 정한다. */
 const ENEMY = {
-  grunt: { w: px(24), depth: px(16), speed: px(0.7), points: 10 },
-  brute: { w: px(38), depth: px(22), speed: px(0.4), points: 50 },
+  grunt: { w: px(24), depth: px(16), speed: px(0.8), points: 10 },
+  brute: { w: px(38), depth: px(22), speed: px(0.46), points: 50 },
   boulder: { w: px(110), depth: px(46), speed: 0, points: 100 },
   boss: { w: px(150), depth: px(60), speed: px(1.2), points: 2000 },
   /** 12스테이지부터: 한 줄로 빠르게 달려드는 도로롱. 도로롱을 따라붙지 않고 곧장 온다(줄을 바꿔 피한다). */
-  runner: { w: px(22), depth: px(14), speed: px(2.4), points: 15 },
+  runner: { w: px(22), depth: px(14), speed: px(2.6), points: 15 },
   /** 30스테이지부터: 멀리서 멈춰 서서 나를 향해 쏜다. 잡거나 피해야 한다. */
-  sniper: { w: px(32), depth: px(20), speed: px(0.8), points: 80 },
+  sniper: { w: px(32), depth: px(20), speed: px(0.9), points: 80 },
 } as const;
 
 const SNIPER = { holdZ: px(560), every: 110, shotSpeed: px(3.4), shotWidth: px(18) } as const;
@@ -96,16 +102,16 @@ const THREAT = { runnerFrom: 12, runnerPercent: 50, rushFrom: 18, rushPercent: 2
  * 적의 체력은 "지금 내 실제 화력" 에서 정한다(곡선으로 미리 정하지 않는다). 내 화력이 자라는 만큼 부술 맛이 계속 이어지고,
  * 난이도는 도전 배율(challengePercent)과 크기·속도·개수로 올린다. 도전 배율 100% 는 "접근하는 내내 계속 쏘면 겨우 부수는" 정도이고, 실제로는 다른 일도 해야 해서 55% 면 부술 수 있는 것이 70% 안팎, 비켜 가야 하는 것이 나머지가 된다.
  */
-const CHALLENGE = { startPercent: 40, perStage: 1, maxPercent: 55 } as const;
+const CHALLENGE = { startPercent: 44, perStage: 1, maxPercent: 62 } as const;
 /**
  * 실제로 줄 수 있는 피해는 이론치(화력 × 접근 시간)보다 훨씬 적다: 총알이 부채꼴로 퍼져 일부는 빗나가고, 다른 적도 쏘고 피해야 한다.
  * 그래서 귤 덩어리·무리·덩치의 체력에는 이 적중 계수를 곱한다(실제로 봇이 부순 비율로 맞춘 값).
  */
 const HIT_EFFICIENCY_PERCENT = 32;
 /** 적 체력의 기준: "이 스테이지의 한계 화력" 의 이 비율(%). 한계의 이만큼을 가진 사람이 도전 배율대로 부술 수 있도록 맞춘다. */
-const ANCHOR_PERCENT = 40;
+const ANCHOR_PERCENT = 46;
 /** 무한 모드: 스테이지가 하나 오를 때마다(레벨) 늘어나는 양. 레벨에는 상한이 있어 모든 수치가 안전한 정수 안에 머문다. */
-const INFINITE = { levelCap: 300, challengePerLevel: 3, bossPercentPerLevel: 4, crowdSpeedPerLevel: px(0.05), crowdSpeedMax: px(3.5), extraCrowdCap: 40 } as const;
+const INFINITE = { levelCap: 300, challengePerLevel: 3, bossPercentPerLevel: 4, extraCrowdCap: 40 } as const;
 
 const BOSS = {
   holdZ: px(340),
@@ -114,10 +120,10 @@ const BOSS = {
   throwEveryPhase2: 50,
   dumbbellSpeed: px(4.4),
   dumbbellWidth: px(24),
-  shieldEvery: 480,
+  shieldEvery: 420,
   shieldTicks: 120,
   killBonus: 1000,
-  seconds: 10,
+  seconds: 18,
   growthPercent: 8,
 } as const;
 
@@ -256,9 +262,9 @@ export type GameEvent =
   | { t: 'stage'; n: number }
   | { t: 'infinite' }
   | { t: 'warn'; label: WarnLabel; lane: number | null }
-  | { t: 'bossIntro' }
-  | { t: 'bossShield'; on: boolean }
-  | { t: 'bossDown'; x: number; z: number }
+  | { t: 'bossIntro'; index: number }
+  | { t: 'bossShield'; on: boolean; index: number }
+  | { t: 'bossDown'; x: number; z: number; index: number }
   | { t: 'over'; cause: 'touch' | 'shot' };
 
 export interface OrangeState {
@@ -333,9 +339,19 @@ export function anchorFirepower(stage: number): number {
   return Math.max(1, Math.floor((firepowerCap(stage) * ANCHOR_PERCENT) / 100));
 }
 
-/** 무한 모드에서 몰려오는 적이 더 빨라지는 양(스테이지가 오를수록 점점). */
-export function crowdSpeedBonus(stage: number): number {
-  return Math.min(INFINITE.crowdSpeedMax, infiniteLevel(stage) * INFINITE.crowdSpeedPerLevel);
+const speedCache: number[] = [];
+
+/** 이 스테이지의 속도(기본 100%): 10스테이지마다 한 단계, 무한 모드에서는 레벨마다 1.5% 씩 곱해지는 지수 증가(상한 있음). 정수 연산. */
+export function speedPercent(stage: number): number {
+  const tier = Math.min(SPEED.maxTier, Math.floor(Math.max(0, stage - 1) / SPEED.tierEvery));
+  const tiered = 100 + tier * SPEED.tierPercent;
+  const level = infiniteLevel(stage);
+  while (speedCache.length <= level) {
+    const last = speedCache.length === 0 ? 100000 : speedCache[speedCache.length - 1];
+    // 100000 = 100.000% 를 소수 셋째 자리까지 정수로 들고 있다
+    speedCache.push(speedCache.length === 0 ? last : Math.floor((last * SPEED.infiniteGrowthPermille) / 1000));
+  }
+  return Math.min(SPEED.maxPercent, Math.floor((tiered * speedCache[level]) / 100000));
 }
 
 /** 치킨 같은 일시 효과를 뺀 도로롱의 초당 피해량. 적의 체력의 기준이 된다. */
@@ -386,8 +402,14 @@ export function firepower(player: Player): number {
   return Math.floor((player.shots * player.damage * FPS) / interval);
 }
 
+/** 이 스테이지에서 이 종류의 적이 내려오는 속도(몰려오는 적만 단계·무한 모드에 따라 빨라진다) */
+export function enemySpeed(kind: EnemyKind, stage: number): number {
+  const base = ENEMY[kind].speed;
+  return kind === 'grunt' || kind === 'brute' || kind === 'runner' || kind === 'sniper' ? Math.floor((base * speedPercent(stage)) / 100) : base;
+}
+
 export function runSpeedFor(stage: number): number {
-  return RUN.base + Math.min(RUN.maxBonus, (stage - 1) * RUN.perStage) + Math.min(RUN.infiniteMax, infiniteLevel(stage) * RUN.infinitePerLevel);
+  return Math.floor((RUN.base * speedPercent(stage)) / 100);
 }
 
 export function comboMultiplier(combo: number): number {
@@ -647,7 +669,7 @@ function startStage(state: OrangeState): void {
     const hp = Math.floor((Math.floor((anchorFirepower(state.stage) * BOSS.seconds * (100 + (index - 1) * BOSS.growthPercent)) / 100) * levelPercent) / 100);
     state.queue = [{ at: state.distance, kind: 'boss', x: FIELD.width / 2, hp }];
     state.bossActive = true;
-    state.events.push({ t: 'bossIntro' });
+    state.events.push({ t: 'bossIntro', index });
     return;
   }
   planNormalStage(state, state.stage);
@@ -664,7 +686,7 @@ function newEnemy(state: OrangeState, kind: EnemyKind, x: number, z: number, hp:
     depth: base.depth,
     hp,
     maxHp: hp,
-    speed: base.speed + (kind === 'grunt' || kind === 'brute' || kind === 'runner' ? crowdSpeedBonus(state.stage) : 0),
+    speed: enemySpeed(kind, state.stage),
     flash: 0,
     shielded: 0,
     born: state.tick,
@@ -745,7 +767,7 @@ function killEnemy(state: OrangeState, enemy: Enemy): void {
     const index = Math.floor(state.stage / STAGE.bossEvery);
     state.score += BOSS.killBonus * index;
     state.dumbbells = [];
-    state.events.push({ t: 'bossDown', x: enemy.x, z: enemy.z });
+    state.events.push({ t: 'bossDown', x: enemy.x, z: enemy.z, index });
     state.items.push({ id: takeId(state), kind: 'orange', x: enemy.x, z: enemy.z });
     state.gates.push({ id: takeId(state), z: FIELD.depth, ...planGate(state, state.stage), used: false });
     state.bossActive = false;
@@ -982,11 +1004,11 @@ function updateBoss(state: OrangeState, boss: Enemy): void {
     if (boss.shielded > 0) {
       boss.shielded -= 1;
       if (boss.shielded === 0) {
-        state.events.push({ t: 'bossShield', on: false });
+        state.events.push({ t: 'bossShield', on: false, index: Math.floor(state.stage / STAGE.bossEvery) });
       }
     } else if (age % BOSS.shieldEvery === BOSS.shieldEvery - 1) {
       boss.shielded = BOSS.shieldTicks;
-      state.events.push({ t: 'bossShield', on: true });
+      state.events.push({ t: 'bossShield', on: true, index: Math.floor(state.stage / STAGE.bossEvery) });
     }
   }
 }

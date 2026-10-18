@@ -14,10 +14,10 @@ describe('화면 효과', () => {
 
   it('보스 등장은 배너와 흔들림, 격파는 배너와 큰 흔들림', () => {
     const fx = createEffects();
-    applyEvent(fx, { t: 'bossIntro' }, rnd);
+    applyEvent(fx, { t: 'bossIntro', index: 1 }, rnd);
     expect(fx.banner?.title).toBe('근육 도로롱');
     expect(fx.shake).toBeGreaterThan(0);
-    applyEvent(fx, { t: 'bossDown', x: 18000, z: 34000 }, rnd);
+    applyEvent(fx, { t: 'bossDown', x: 18000, z: 34000, index: 1 }, rnd);
     expect(fx.banner?.title).toContain('격파');
     expect(fx.shake).toBeGreaterThanOrEqual(20);
   });
@@ -33,7 +33,7 @@ describe('화면 효과', () => {
   it('시간이 지나면 말풍선·파티클·배너가 사라진다', () => {
     const fx = createEffects();
     applyEvent(fx, { t: 'kill', kind: 'brute', x: 0, z: 0, points: 200 }, rnd);
-    applyEvent(fx, { t: 'bossIntro' }, rnd);
+    applyEvent(fx, { t: 'bossIntro', index: 1 }, rnd);
     for (let i = 0; i < 400; i += 1) {
       updateEffects(fx);
     }

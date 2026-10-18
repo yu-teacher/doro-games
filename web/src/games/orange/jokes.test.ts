@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GATE_TITLES, RANKS, gateValueText, isTrap, pick, quipFor, rankTitle } from './jokes';
+import { BOSSES, GATE_TITLES, RANKS, bossProfile, gateValueText, isTrap, pick, quipFor, rankTitle } from './jokes';
 
 describe('pick', () => {
   it('번호로 고르고 범위를 벗어나거나 음수여도 돌려 쓴다', () => {
@@ -54,5 +54,21 @@ describe('quipFor', () => {
     const spoken = [0, 1, 2, 3, 4, 5].filter((i) => quipFor({ t: 'kill', kind: 'grunt', x: 0, z: 0, points: 1 }, i) !== null);
     expect(spoken.length).toBeLessThan(6);
     expect(spoken.length).toBeGreaterThan(0);
+  });
+});
+
+describe('보스 프로필', () => {
+  it('보스마다 이름이 다르고, 모습이 돌아가는 순서와 같은 규칙으로 고른다', () => {
+    const names = BOSSES.map((b) => b.name);
+    expect(new Set(names).size).toBe(BOSSES.length);
+    expect(bossProfile(1).name).toBe('근육 도로롱');
+    expect(bossProfile(2).name).toBe(BOSSES[1].name);
+    expect(bossProfile(1 + BOSSES.length).name).toBe(bossProfile(1).name);
+    expect(bossProfile(0).name).toBe(BOSSES[BOSSES.length - 1].name);
+    for (const boss of BOSSES) {
+      expect(boss.intro.length).toBeGreaterThan(0);
+      expect(boss.shield.length).toBeGreaterThan(0);
+      expect(boss.down.length).toBeGreaterThan(0);
+    }
   });
 });

@@ -20,7 +20,7 @@ import {
 } from './engine';
 import { formatCount } from './format';
 import { frameAt, frameCount, variantOf } from './assets';
-import { BOSS_NAME, GATE_TITLES, HIDDEN_TEXT, HIDDEN_TITLE, WARN_BOSS, gateValueText, isTrap, pick, rankTitle } from './jokes';
+import { bossProfile, GATE_TITLES, HIDDEN_TEXT, HIDDEN_TITLE, WARN_BOSS, gateValueText, isTrap, pick, rankTitle } from './jokes';
 import { HORIZON_Y, PLAYER_Y, VIEW, project } from './view';
 
 /** 그리기 전용. 상태를 읽기만 하고 바꾸지 않는다. 그림이 없으면 도형으로 대신 그린다. */
@@ -464,7 +464,7 @@ function drawHud(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.fillRect(40, 62, w, 12);
     ctx.fillStyle = boss.shielded > 0 ? '#fde047' : PALETTE.hpFill;
     ctx.fillRect(40, 62, (w * Math.max(0, boss.hp)) / boss.maxHp, 12);
-    text(ctx, `${BOSS_NAME}  ${formatCount(boss.hp)}`, VIEW.width / 2, 90, 15, '#fff');
+    text(ctx, `${bossProfile(Math.floor(scene.state.stage / STAGE_BOSS_EVERY)).name}  ${formatCount(boss.hp)}`, VIEW.width / 2, 90, 15, '#fff');
   }
 }
 
