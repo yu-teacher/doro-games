@@ -21,20 +21,21 @@ export interface BotOptions {
 /** 서툰 사람에 가까운 설정: 늦게 보고, 가끔 딴짓하고, 게이트를 가끔 잘못 고르고, 아이템을 놓친다. */
 export const CASUAL: BotOptions = { greed: 1.4, lookAhead: 200, distractionEvery: 150, gateMistake: 0.3, ignoreItems: false, seed: 11 };
 
-function gateValue(effect: GateEffect, shots: number): number {
+/** 게이트를 골랐을 때 화력이 몇 % 늘고 줄어드는지(상대 증가율). 숫자가 커져도 비교가 맞도록 절대값이 아니라 비율로 본다. */
+function gateValue(effect: GateEffect, player: OrangeState['player']): number {
   switch (effect.kind) {
     case 'shotsMul':
-      return shots * (effect.value - 1) * 3;
+      return (effect.value - 1) * 100;
     case 'shotsUp':
-      return effect.value * 3;
+      return (effect.value / player.shots) * 100;
     case 'dmgUp':
-      return effect.value * 2;
+      return (effect.value / player.damage) * 100;
     case 'rateUp':
-      return effect.value * 2;
+      return (effect.value / player.interval) * 100;
     case 'shotsDown':
-      return -effect.value * 3;
+      return -(effect.value / player.shots) * 100;
     case 'shotsHalf':
-      return -shots * 2;
+      return -50;
   }
 }
 
@@ -72,7 +73,7 @@ export function createBot(options: BotOptions = {}): (state: OrangeState) => Ora
       : [...state.enemies].filter((e) => e.z > 0 && killable(state, e)).sort((a, b) => a.z - b.z)[0];
     if (gate) {
       if (gateChoice?.gateId !== gate.id) {
-        const better = gateValue(gate.left, player.shots) >= gateValue(gate.right, player.shots);
+        const better = gateValue(gate.left, player) >= gateValue(gate.right, player);
         const mistaken = options.gateMistake !== undefined && roll(1000) < options.gateMistake * 1000;
         gateChoice = { gateId: gate.id, left: mistaken ? !better : better };
       }

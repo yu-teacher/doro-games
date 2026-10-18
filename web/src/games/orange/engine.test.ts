@@ -9,11 +9,16 @@ import {
   createState,
   baseFirepower,
   challengePercent,
+  damageCap,
   effect,
   firepower,
+  firepowerCap,
+  intervalFloor,
   nextUint,
   px,
   runSpeedFor,
+  SCALING_STAGE_LIMIT,
+  shotsCap,
   step,
   type Enemy,
   type EnemyKind,
@@ -33,8 +38,9 @@ function play(state: OrangeState, frames: number, input: (s: OrangeState) => Ora
 }
 
 /** 스테이지가 저절로 진행·스폰되지 않는 빈 판(규칙을 하나씩 확인하려고). */
-function emptied(seed = 1): OrangeState {
+function emptied(seed = 1, stage = 1): OrangeState {
   const state = createState(seed);
+  state.stage = stage;
   state.queue = [];
   state.stageStart = Number.MAX_SAFE_INTEGER / 2;
   return state;
@@ -280,8 +286,9 @@ describe('스테이지 스폰', () => {
     for (let seed = 1; seed <= 60; seed += 1) {
       const state = createState(seed);
       state.queue = [];
-      state.player.shots = PLAYER.maxShots;
-      state.player.interval = PLAYER.minInterval;
+      state.player.shots = shotsCap(15);
+      state.player.interval = intervalFloor(15);
+      state.player.damage = 1;
       state.player.star = Number.MAX_SAFE_INTEGER;
       state.stage = 14;
       state.distance = state.stageStart + px(900);
@@ -309,13 +316,13 @@ describe('스테이지 스폰', () => {
 
 describe('게이트', () => {
   it('지나가는 쪽 게이트의 효과만 적용된다', () => {
-    const left = emptied();
+    const left = emptied(1, 40);
     gateAt(left, px(40), effect('shotsUp', 3), effect('dmgUp', 5));
     play(left, 60, () => ({ targetX: px(40) }));
     expect(left.player.shots).toBeGreaterThanOrEqual(PLAYER.startShots + 3);
     expect(left.player.damage).toBe(PLAYER.startDamage);
 
-    const right = emptied();
+    const right = emptied(1, 40);
     gateAt(right, px(40), effect('shotsUp', 3), effect('dmgUp', 5));
     play(right, 60, () => ({ targetX: FIELD.width - px(40) }));
     expect(right.player.shots).toBe(PLAYER.startShots);
@@ -331,7 +338,7 @@ describe('게이트', () => {
     ];
     const expected = [12, PLAYER.startInterval - 4, 3, 4];
     cases.forEach(([chosen, setup, read], i) => {
-      const state = emptied();
+      const state = emptied(1, 40);
       setup(state);
       gateAt(state, px(40), chosen, effect('dmgUp', 1));
       play(state, 60, () => ({ targetX: px(40) }));
@@ -339,16 +346,20 @@ describe('게이트', () => {
     });
   });
 
-  it('총알 수와 공격력에는 상한이 있고 함정으로도 1 아래로 내려가지 않는다', () => {
+  it('총알 수·공격력·연사에는 이 스테이지의 상한이 있고 함정으로도 1 아래로 내려가지 않는다', () => {
     const capped = emptied();
-    capped.player.shots = PLAYER.maxShots;
-    capped.player.damage = PLAYER.maxDamage;
+    capped.player.shots = shotsCap(1);
+    capped.player.damage = damageCap(1);
+    capped.player.interval = intervalFloor(1);
     gateAt(capped, px(40), effect('shotsMul', 2), effect('dmgUp', 50));
     play(capped, 60, () => ({ targetX: px(40) }));
-    expect(capped.player.shots).toBe(PLAYER.maxShots);
+    expect(capped.player.shots).toBe(shotsCap(1));
     gateAt(capped, px(40), effect('dmgUp', 50), effect('shotsUp', 1));
     play(capped, 60, () => ({ targetX: px(40) }));
-    expect(capped.player.damage).toBe(PLAYER.maxDamage);
+    expect(capped.player.damage).toBe(damageCap(1));
+    gateAt(capped, px(40), effect('rateUp', 50), effect('shotsUp', 1));
+    play(capped, 60, () => ({ targetX: px(40) }));
+    expect(capped.player.interval).toBe(intervalFloor(1));
 
     const low = emptied();
     gateAt(low, px(40), effect('shotsDown', 9), effect('dmgUp', 1));
@@ -356,8 +367,41 @@ describe('게이트', () => {
     expect(low.player.shots).toBe(1);
   });
 
+  it('스테이지가 오르면 상한도 오른다(성장이 끝나지 않는다)', () => {
+    for (let stage = 2; stage <= SCALING_STAGE_LIMIT; stage += 1) {
+      expect(damageCap(stage)).toBeGreaterThan(damageCap(stage - 1));
+      expect(firepowerCap(stage)).toBeGreaterThanOrEqual(firepowerCap(stage - 1));
+      expect(shotsCap(stage)).toBeGreaterThanOrEqual(shotsCap(stage - 1));
+      expect(intervalFloor(stage)).toBeLessThanOrEqual(intervalFloor(stage - 1));
+    }
+    expect(damageCap(50)).toBeGreaterThan(damageCap(20) * 10);
+    expect(shotsCap(99)).toBe(PLAYER.maxShots);
+    expect(intervalFloor(99)).toBe(PLAYER.minInterval);
+  });
+
+  it('성장은 정해진 스테이지에서 멈추고, 어떤 스테이지에서도 모든 수치가 JS 가 정확히 다루는 정수 안에 머문다', () => {
+    expect(damageCap(SCALING_STAGE_LIMIT + 500)).toBe(damageCap(SCALING_STAGE_LIMIT));
+    for (const stage of [SCALING_STAGE_LIMIT, 200, 5000, 1_000_000]) {
+      const state = createState(7);
+      state.queue = [];
+      state.stage = stage - 1;
+      state.player.shots = shotsCap(stage);
+      state.player.damage = damageCap(stage);
+      state.player.interval = intervalFloor(stage);
+      state.player.star = Number.MAX_SAFE_INTEGER;
+      state.distance = state.stageStart + px(900);
+      step(state, { targetX: CENTER });
+      const values: number[] = [firepower(state.player), firepowerCap(stage), baseFirepower(state.player), state.score];
+      state.queue.forEach((q) => values.push(q.hp ?? 0, q.at, q.x, q.count ?? 0));
+      state.enemies.forEach((e) => values.push(e.hp, e.maxHp));
+      values.forEach((v) => expect(Number.isSafeInteger(v), `stage ${stage}: ${v}`).toBe(true));
+      // 체력 계산의 곱셈 중간값(화력 × 11초 × 도전 배율 × 적중 계수 × 변동)도 안전 한계의 1/10 아래(실제 계수는 이보다 작아 여유가 더 있다)
+      expect(firepowerCap(stage) * 11 * 55 * 100 * 139).toBeLessThan(Number.MAX_SAFE_INTEGER / 10);
+    }
+  });
+
   it('총알은 게이트를 통과해 뒤의 적을 맞히고, 총알 하나는 게이트를 한 번만 센다', () => {
-    const state = emptied();
+    const state = emptied(1, 40);
     state.player.x = px(40);
     state.player.shots = 1;
     state.player.interval = 1000;
@@ -370,7 +414,7 @@ describe('게이트', () => {
   });
 
   it('총알 수 게이트는 30발마다 1씩 오르고 한도(원래 값+3)를 넘지 않는다', () => {
-    const state = emptied();
+    const state = emptied(1, 40);
     state.player.x = px(40);
     state.player.damage = 1;
     const gate = gateAt(state, px(500), effect('shotsUp', 2), effect('dmgUp', 1));
@@ -534,7 +578,7 @@ describe('보스', () => {
   it('보스를 쓰러뜨리면 보너스·귤·게이트가 나오고 잠시 뒤 다음 스테이지가 시작된다', () => {
     const state = toBossStage();
     state.player.star = Number.MAX_SAFE_INTEGER;
-    state.player.damage = PLAYER.maxDamage;
+    state.player.damage = 2000;
     state.player.shots = PLAYER.maxShots;
     state.player.interval = PLAYER.minInterval;
     const events: string[] = [];
@@ -564,7 +608,7 @@ describe('결정성과 정수', () => {
   it('긴 판을 돌려도 모든 좌표와 수치가 정수다(부동소수점이 없다)', () => {
     const state = createState(5);
     state.player.star = Number.MAX_SAFE_INTEGER;
-    state.player.damage = PLAYER.maxDamage;
+    state.player.damage = 2000;
     state.player.shots = 10;
     for (let i = 0; i < FPS * 120; i += 1) {
       step(state, wiggle(state));

@@ -31,8 +31,8 @@ export const PLAYER = {
   startShots: 3,
   startInterval: 12,
   startDamage: 3,
+  /** 어떤 스테이지에서도 넘지 못하는 절대 한계(총알 수는 화면이 감당할 수 있는 만큼, 연사는 이보다 빠를 수 없다) */
   maxShots: 16,
-  maxDamage: 40,
   minInterval: 5,
   maxShield: 2,
   invulnTicksAfterShield: 60,
@@ -270,6 +270,43 @@ export function baseFirepower(player: Player): number {
   return Math.max(1, Math.floor((player.shots * player.damage * FPS) / player.interval));
 }
 
+// ----- 스테이지별 상한: 상한 자체가 스테이지와 함께 올라가서 성장이 끝나지 않는다 -----
+const CAP = { shotsStart: 4, shotsEveryStages: 2, intervalStart: 12, intervalEveryStages: 3, damageStart: 6, damageGrowthPercent: 113 } as const;
+
+/**
+ * 상한이 스테이지와 함께 자라는 것은 이 스테이지까지만이다. 더 가면 값이 멈춘다.
+ * 이유: 서버가 같은 결과를 재현해야 해서 모든 수치를 JS 가 정확히 다루는 정수(2^53 ≈ 9.0×10^15)에 담아야 하는데,
+ * 지수로 계속 키우면 아주 오래 사는 판에서 곱셈 중간값이 그 한계를 넘는다. 이 스테이지에서 멈추면 가장 큰 곱(체력 계산)도 한계의 1/300 안팎에 머문다.
+ */
+export const SCALING_STAGE_LIMIT = 80;
+
+const damageCapCache: number[] = [CAP.damageStart];
+
+/** 이 스테이지에서 낼 수 있는 최대 총알 수 */
+export function shotsCap(stage: number): number {
+  return Math.min(PLAYER.maxShots, CAP.shotsStart + Math.floor(Math.min(SCALING_STAGE_LIMIT, Math.max(0, stage)) / CAP.shotsEveryStages));
+}
+
+/** 이 스테이지에서 가장 빠를 수 있는 연사 간격(작을수록 빠르다) */
+export function intervalFloor(stage: number): number {
+  return Math.max(PLAYER.minInterval, CAP.intervalStart - Math.floor(Math.min(SCALING_STAGE_LIMIT, Math.max(0, stage)) / CAP.intervalEveryStages));
+}
+
+/** 이 스테이지에서 낼 수 있는 최대 공격력. 처음엔 한 스테이지에 1씩 늘다가 곧 13% 씩 지수로 커진다(정수 연산). */
+export function damageCap(stage: number): number {
+  const n = Math.min(SCALING_STAGE_LIMIT, Math.max(1, stage)) - 1;
+  while (damageCapCache.length <= n) {
+    const last = damageCapCache[damageCapCache.length - 1];
+    damageCapCache.push(Math.max(last + 1, Math.floor((last * CAP.damageGrowthPercent) / 100)));
+  }
+  return damageCapCache[n];
+}
+
+/** 이 스테이지에서 낼 수 있는 최대 화력(초당 피해량). 화면에 "한계" 로 보여 준다. */
+export function firepowerCap(stage: number): number {
+  return Math.floor((shotsCap(stage) * damageCap(stage) * FPS) / intervalFloor(stage));
+}
+
 /** 지금 도로롱의 초당 피해량(화면에 보이는 "화력" 숫자). */
 export function firepower(player: Player): number {
   const interval = player.chicken > 0 ? Math.max(PLAYER.minInterval, Math.floor(player.interval / 2)) : player.interval;
@@ -341,16 +378,17 @@ export function effect(kind: GateKind, value: number): GateEffect {
 function goodGate(state: OrangeState, stage: number): GateEffect {
   const p = state.player;
   const roll = rand(state, 100);
-  const damage = effect('dmgUp', 2 + Math.floor(stage / 3));
-  // 이미 상한에 닿은 스탯의 게이트는 쓸모없으니 공격력 게이트로 바꾼다(성장이 멈추지 않게)
+  // 공격력 게이트는 지금 값의 25%(최소 +2). 숫자가 커져도 한 번의 성장이 의미 있게 유지된다.
+  const damage = effect('dmgUp', Math.max(2, Math.floor((p.damage * 25) / 100)));
+  // 이 스테이지의 상한에 이미 닿은 스탯의 게이트는 쓸모없으니 공격력 게이트로 바꾼다(성장이 멈추지 않게)
   if (roll < 36) {
-    return p.shots >= PLAYER.maxShots ? damage : effect('shotsUp', 1 + Math.floor(stage / 8));
+    return p.shots >= shotsCap(stage) ? damage : effect('shotsUp', 1 + Math.floor(stage / 8));
   }
   if (roll < 50 && stage >= 10) {
-    return p.shots >= PLAYER.maxShots ? damage : effect('shotsMul', 2);
+    return p.shots >= shotsCap(stage) ? damage : effect('shotsMul', 2);
   }
   if (roll < 74) {
-    return p.interval <= PLAYER.minInterval ? damage : effect('rateUp', 2);
+    return p.interval <= intervalFloor(stage) ? damage : effect('rateUp', 2);
   }
   return damage;
 }
@@ -525,16 +563,16 @@ function applyGate(state: OrangeState, gate: Gate, chosen: GateEffect): void {
   const v = chosen.value;
   switch (chosen.kind) {
     case 'shotsUp':
-      p.shots = Math.min(PLAYER.maxShots, p.shots + v);
+      p.shots = Math.min(shotsCap(state.stage), p.shots + v);
       break;
     case 'shotsMul':
-      p.shots = Math.min(PLAYER.maxShots, p.shots * v);
+      p.shots = Math.min(shotsCap(state.stage), p.shots * v);
       break;
     case 'rateUp':
-      p.interval = Math.max(PLAYER.minInterval, p.interval - v);
+      p.interval = Math.max(intervalFloor(state.stage), p.interval - v);
       break;
     case 'dmgUp':
-      p.damage = Math.min(PLAYER.maxDamage, p.damage + v);
+      p.damage = Math.min(damageCap(state.stage), p.damage + v);
       break;
     case 'shotsDown':
       p.shots = Math.max(1, p.shots - v);

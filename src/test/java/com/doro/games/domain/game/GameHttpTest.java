@@ -168,7 +168,7 @@ class GameHttpTest extends GamesHttpTestBase {
         send(user, post("/api/v1/games/{s}/runs/{r}/score", "orange-blitz", ok).contentType(MediaType.APPLICATION_JSON).content("{\"score\":4200}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.best").value(4200));
 
-        // 판을 시작하자마자 낼 수 없는 값(네트워크 여유를 합쳐도 초당 10000점 한도를 넘는다)은 거절한다
+        // 판을 시작하자마자 낼 수 없는 값(네트워크 여유를 합쳐도 초당 15000점 한도를 넘는다)은 거절한다
         String tooFast = startRun(user, "orange-blitz");
         send(user, post("/api/v1/games/{s}/runs/{r}/score", "orange-blitz", tooFast).contentType(MediaType.APPLICATION_JSON).content("{\"score\":200000}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("SCORE-400-01"));

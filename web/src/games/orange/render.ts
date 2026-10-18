@@ -6,12 +6,14 @@ import {
   PX,
   comboMultiplier,
   firepower,
+  firepowerCap,
   type Enemy,
   type Gate,
   type GateEffect,
   type ItemKind,
   type OrangeState,
 } from './engine';
+import { formatCount } from './format';
 import { BOSS_NAME, GATE_TITLES, gateValueText, isTrap, pick, rankTitle } from './jokes';
 import { HORIZON_Y, PLAYER_Y, VIEW, project } from './view';
 
@@ -266,7 +268,7 @@ function drawBoulder(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
     ctx.fill();
   }
   // 체력 숫자: 줄어드는 숫자가 "내 화력과의 승부" 를 보여 준다
-  text(ctx, String(Math.max(0, enemy.hp)), at.x, cy + radius * 0.1, Math.max(10, radius * 0.62), '#fff');
+  text(ctx, formatCount(enemy.hp), at.x, cy + radius * 0.1, Math.max(10, radius * (formatCount(enemy.hp).length > 5 ? 0.46 : 0.62)), '#fff');
 }
 
 function drawActor(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): void {
@@ -295,7 +297,7 @@ function drawActor(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): v
     ctx.stroke();
   }
   if (enemy.kind === 'brute') {
-    text(ctx, String(Math.max(0, enemy.hp)), at.x, at.y - w * 1.08, Math.max(8, 15 * at.scale), '#fff');
+    text(ctx, formatCount(enemy.hp), at.x, at.y - w * 1.08, Math.max(8, 15 * at.scale), '#fff');
   }
 }
 
@@ -360,8 +362,10 @@ function drawHud(ctx: CanvasRenderingContext2D, scene: Scene): void {
     text(ctx, `COMBO ${state.combo}  ×${comboMultiplier(state.combo)}`, 12, 48, 13, COLORS.gold, { align: 'left' });
   }
   // 내 화력: 화면의 체력 숫자와 견주는 기준
-  text(ctx, `화력 ${firepower(p)}`, 12, VIEW.height - 24, 22, '#86efac', { align: 'left' });
-  text(ctx, `${p.shots}발 × 공격 ${p.damage}`, 12, VIEW.height - 6, 11, '#cbd5e1', { align: 'left', weight: '600' });
+  text(ctx, `화력 ${formatCount(firepower(p))}`, 12, VIEW.height - 30, 22, '#86efac', { align: 'left' });
+  text(ctx, `${p.shots}발 × 공격 ${formatCount(p.damage)}`, 12, VIEW.height - 12, 11, '#cbd5e1', { align: 'left', weight: '600' });
+  // 이 스테이지에서 낼 수 있는 최대 화력: 상한이 스테이지와 함께 올라가는 것이 성장의 기준선이다
+  text(ctx, `한계 ${formatCount(firepowerCap(state.stage))}`, 12, VIEW.height - 52, 11, '#fde68a', { align: 'left', weight: '600' });
   const icons: [string, number, number][] = [
     ['🍗', p.chicken, 360],
     ['💰', p.cash, 480],
@@ -389,7 +393,7 @@ function drawHud(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.fillRect(40, 62, w, 12);
     ctx.fillStyle = boss.shielded > 0 ? '#fde047' : PALETTE.hpFill;
     ctx.fillRect(40, 62, (w * Math.max(0, boss.hp)) / boss.maxHp, 12);
-    text(ctx, `${BOSS_NAME}  ${Math.max(0, boss.hp)}`, VIEW.width / 2, 90, 15, '#fff');
+    text(ctx, `${BOSS_NAME}  ${formatCount(boss.hp)}`, VIEW.width / 2, 90, 15, '#fff');
   }
 }
 
