@@ -7,10 +7,10 @@ import {
   STAGE_BOSS_EVERY,
   comboMultiplier,
   createState,
+  baseFirepower,
+  challengePercent,
   effect,
-  expectedDps,
   firepower,
-  hpScalePercent,
   nextUint,
   px,
   runSpeedFor,
@@ -214,12 +214,21 @@ describe('적과 점수', () => {
     expect(grunt.z).toBeLessThan(px(700));
   });
 
-  it('체력 배율은 정수이고 갈수록 가속해서 커진다(끝없는 모드가 결국 끝나도록)', () => {
-    const percents = Array.from({ length: 40 }, (_, i) => hpScalePercent(i + 1));
+  it('도전 배율은 완만하게 오르다 상한에서 멈춘다(그 뒤 난이도는 속도·개수·길 막기로 오른다)', () => {
+    const percents = Array.from({ length: 80 }, (_, i) => challengePercent(i + 1));
     percents.forEach((p) => expect(Number.isInteger(p)).toBe(true));
-    expect(percents[39] - percents[38]).toBeGreaterThan((percents[10] - percents[9]) * 5);
-    expect(expectedDps(1)).toBe(45);
-    expect(expectedDps(20)).toBeGreaterThan(expectedDps(10));
+    for (let i = 1; i < percents.length; i += 1) {
+      expect(percents[i]).toBeGreaterThanOrEqual(percents[i - 1]);
+    }
+    expect(percents[0]).toBeGreaterThanOrEqual(60);
+    expect(percents[79]).toBe(200);
+  });
+
+  it('기준 화력은 치킨 같은 일시 효과를 빼고 센다', () => {
+    const state = emptied();
+    state.player.chicken = 100;
+    expect(baseFirepower(state.player)).toBe(Math.floor((PLAYER.startShots * PLAYER.startDamage * FPS) / PLAYER.startInterval));
+    expect(firepower(state.player)).toBeGreaterThan(baseFirepower(state.player));
   });
 });
 
@@ -240,10 +249,52 @@ describe('스테이지 스폰', () => {
     expect(kinds.has('grunt')).toBe(true);
     const boulder = state.enemies.find((e) => e.kind === 'boulder');
     if (boulder) {
-      // 스테이지 1: 기대 화력 40 × 접근 시간 11초 × (0.6~1.8)
-      expect(boulder.maxHp).toBeGreaterThanOrEqual(264);
-      expect(boulder.maxHp).toBeLessThanOrEqual(792);
+      // 스테이지 1: 내 화력 45 × 접근 시간 11초 × 도전 배율 63% × (60~140%)
+      expect(boulder.maxHp).toBeGreaterThanOrEqual(180);
+      expect(boulder.maxHp).toBeLessThanOrEqual(440);
     }
+  });
+
+  /** 다음 스테이지를 계획하게 만들고 그때 큐에 들어간 귤 덩어리의 체력을 돌려준다. */
+  function boulderHpsAfterNextStage(shots: number, damage: number): number[] {
+    const state = createState(5);
+    state.queue = [];
+    state.player.shots = shots;
+    state.player.damage = damage;
+    state.player.star = Number.MAX_SAFE_INTEGER;
+    state.distance = state.stageStart + px(900);
+    step(state, { targetX: CENTER });
+    return state.queue.filter((q) => q.kind === 'boulder').map((q) => q.hp ?? 0);
+  }
+
+  it('적의 체력은 지금 내 화력에서 정해진다(내가 강해지면 부술 맛이 이어지게 숫자도 함께 큰다)', () => {
+    const weak = boulderHpsAfterNextStage(3, 3);
+    const strong = boulderHpsAfterNextStage(12, 12);
+    expect(weak.length).toBeGreaterThan(0);
+    expect(strong.length).toBe(weak.length);
+    strong.forEach((hp, i) => expect(hp).toBeGreaterThan(weak[i] * 8));
+  });
+
+  it('이미 상한에 닿은 스탯의 게이트는 나오지 않고 공격력 게이트로 바뀐다', () => {
+    const kinds = new Set<string>();
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const state = createState(seed);
+      state.queue = [];
+      state.player.shots = PLAYER.maxShots;
+      state.player.interval = PLAYER.minInterval;
+      state.player.star = Number.MAX_SAFE_INTEGER;
+      state.stage = 14;
+      state.distance = state.stageStart + px(900);
+      step(state, { targetX: CENTER });
+      state.queue.filter((q) => q.kind === 'gate').forEach((q) => {
+        kinds.add(q.gate?.left.kind ?? '');
+        kinds.add(q.gate?.right.kind ?? '');
+      });
+    }
+    expect(kinds.has('shotsUp')).toBe(false);
+    expect(kinds.has('shotsMul')).toBe(false);
+    expect(kinds.has('rateUp')).toBe(false);
+    expect(kinds.has('dmgUp')).toBe(true);
   });
 
   it('일정 거리를 달리면 다음 스테이지로 넘어가고 보너스를 받는다', () => {

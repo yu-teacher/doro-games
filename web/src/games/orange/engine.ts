@@ -31,8 +31,8 @@ export const PLAYER = {
   startShots: 3,
   startInterval: 12,
   startDamage: 3,
-  maxShots: 12,
-  maxDamage: 20,
+  maxShots: 16,
+  maxDamage: 40,
   minInterval: 5,
   maxShield: 2,
   invulnTicksAfterShield: 60,
@@ -65,7 +65,7 @@ const BOMB = { base: 60, perVolley: 15, range: px(450), bossPercent: 40 } as con
 
 const COMBO = { window: 90, perStep: 10, maxMultiplier: 5 } as const;
 
-/** 종류별 크기·속도·점수. 체력은 기대 화력(expectedDps)에서 정한다. */
+/** 종류별 크기·속도·점수. 체력은 지금 내 실제 화력(baseFirepower)에서 정한다. */
 const ENEMY = {
   grunt: { w: px(24), depth: px(16), speed: px(0.7), points: 10 },
   brute: { w: px(38), depth: px(22), speed: px(0.4), points: 50 },
@@ -73,10 +73,11 @@ const ENEMY = {
   boss: { w: px(150), depth: px(60), speed: px(1.2), points: 2000 },
 } as const;
 
-/** 웨이브(스테이지)마다 체력 배율(%)이 growthPercent 만큼 곱해지고 flat 만큼 더해진다(지수 증가라 어느 시점엔 반드시 못 막게 된다). */
-const SCALE = { growthPercent: 124, flat: 4 } as const;
-/** 스테이지 1 에서 기대하는 초당 피해량. 적의 체력은 이 값에 배율을 곱해 정한다(그래서 화면의 숫자가 "내 화력과의 승부" 가 된다). */
-const BASE_DPS = 45;
+/**
+ * 적의 체력은 "지금 내 실제 화력" 에서 정한다(곡선으로 미리 정하지 않는다). 내 화력이 자라는 만큼 부술 맛이 계속 이어지고,
+ * 난이도는 도전 배율(challengePercent)과 크기·속도·개수로 올린다. 도전 배율 100% 는 "접근하는 내내 계속 쏘면 겨우 부수는" 정도다.
+ */
+const CHALLENGE = { startPercent: 60, perStage: 3, maxPercent: 200 } as const;
 
 const BOSS = {
   holdZ: px(340),
@@ -88,8 +89,8 @@ const BOSS = {
   shieldEvery: 480,
   shieldTicks: 120,
   killBonus: 1000,
-  seconds: 30,
-  growthPercent: 25,
+  seconds: 20,
+  growthPercent: 15,
 } as const;
 
 export const STAGE_BOSS_EVERY = STAGE.bossEvery;
@@ -254,20 +255,14 @@ function rand(state: OrangeState, n: number): number {
 
 // ---------------------------------------------------------------------------------------------- 수치
 
-const hpScaleCache: number[] = [100];
-
-/** 스테이지 번호에 따른 체력 배율(%). 정수 연산만 쓴다: 이전 값 * 배수 / 100 (내림) + 고정 증가. */
-export function hpScalePercent(stage: number): number {
-  const n = Math.max(0, stage - 1);
-  while (hpScaleCache.length <= n) {
-    hpScaleCache.push(Math.floor((hpScaleCache[hpScaleCache.length - 1] * SCALE.growthPercent) / 100) + SCALE.flat);
-  }
-  return hpScaleCache[n];
+/** 스테이지에 따른 도전 배율(%). 완만하게 오르다 상한에서 멈춘다 — 그 뒤 난이도는 속도·개수·길 막기로 오른다. */
+export function challengePercent(stage: number): number {
+  return Math.min(CHALLENGE.maxPercent, CHALLENGE.startPercent + Math.floor(Math.max(0, stage) * CHALLENGE.perStage));
 }
 
-/** 이 스테이지에서 도로롱이 낼 것으로 기대하는 초당 피해량. 적의 체력 숫자의 기준이 된다. */
-export function expectedDps(stage: number): number {
-  return Math.floor((BASE_DPS * hpScalePercent(stage)) / 100);
+/** 치킨 같은 일시 효과를 뺀 도로롱의 초당 피해량. 적의 체력의 기준이 된다. */
+export function baseFirepower(player: Player): number {
+  return Math.max(1, Math.floor((player.shots * player.damage * FPS) / player.interval));
 }
 
 /** 지금 도로롱의 초당 피해량(화면에 보이는 "화력" 숫자). */
@@ -339,17 +334,20 @@ export function effect(kind: GateKind, value: number): GateEffect {
 }
 
 function goodGate(state: OrangeState, stage: number): GateEffect {
+  const p = state.player;
   const roll = rand(state, 100);
+  const damage = effect('dmgUp', 2 + Math.floor(stage / 3));
+  // 이미 상한에 닿은 스탯의 게이트는 쓸모없으니 공격력 게이트로 바꾼다(성장이 멈추지 않게)
   if (roll < 36) {
-    return effect('shotsUp', 1 + Math.floor(stage / 8));
+    return p.shots >= PLAYER.maxShots ? damage : effect('shotsUp', 1 + Math.floor(stage / 8));
   }
   if (roll < 50 && stage >= 10) {
-    return effect('shotsMul', 2);
+    return p.shots >= PLAYER.maxShots ? damage : effect('shotsMul', 2);
   }
   if (roll < 74) {
-    return effect('rateUp', 2);
+    return p.interval <= PLAYER.minInterval ? damage : effect('rateUp', 2);
   }
-  return effect('dmgUp', 1 + Math.floor(stage / 6));
+  return damage;
 }
 
 function trapGate(state: OrangeState, stage: number): GateEffect {
@@ -374,7 +372,8 @@ function shuffled<T>(state: OrangeState, list: readonly T[]): T[] {
 
 function planNormalStage(state: OrangeState, stage: number): void {
   const base = state.stageStart;
-  const dps = expectedDps(stage);
+  const dps = baseFirepower(state.player);
+  const challenge = challengePercent(stage);
   const queue: Spawn[] = [];
   queue.push({ at: base + px(60), kind: 'gate', x: 0, gate: planGate(state, stage) });
 
@@ -383,19 +382,19 @@ function planNormalStage(state: OrangeState, stage: number): void {
   shuffled(state, STAGE.lanes)
     .slice(0, boulderCount)
     .forEach((x, i) => {
-      // 접근하는 동안(약 11초) 계속 쏘면 줄 수 있는 피해의 60~180%: 시작 화력으로는 못 부수는 큰 숫자도 나온다(비켜서 피하는 판단)
-      const hp = Math.max(10, Math.floor((dps * 11 * (60 + rand(state, 120))) / 100));
+      // 접근하는 동안(약 11초) 계속 쏘면 줄 수 있는 피해 × 도전 배율 × (60~140%): 부술 수 있는 것과 비켜 가야 하는 것이 섞인다
+      const hp = Math.max(10, Math.floor((dps * 11 * challenge * (60 + rand(state, 80))) / 10000));
       queue.push({ at: base + px(240) + i * px(20), kind: 'boulder', x, hp, w: px(90) + rand(state, px(45)) });
     });
 
   // 몰려오는 무리: 전체 체력은 기대 화력의 약 3초치
   const count = Math.min(28, 3 + Math.floor((stage * 11) / 10) + rand(state, 3));
-  queue.push({ at: base + px(480), kind: 'crowd', x: px(60) + rand(state, FIELD.width - px(120)), hp: Math.max(2, Math.floor((dps * 7) / (2 * count))), count });
+  queue.push({ at: base + px(480), kind: 'crowd', x: px(60) + rand(state, FIELD.width - px(120)), hp: Math.max(2, Math.floor((dps * 7 * challenge) / (200 * count))), count });
 
   if (stage >= 4) {
     const bruteCount = 1 + (stage >= 9 ? 1 : 0);
     for (let i = 0; i < bruteCount; i += 1) {
-      queue.push({ at: base + px(600) + i * px(30), kind: 'brute', x: STAGE.lanes[rand(state, 3)], hp: Math.max(4, dps * 3) });
+      queue.push({ at: base + px(600) + i * px(30), kind: 'brute', x: STAGE.lanes[rand(state, 3)], hp: Math.max(4, Math.floor((dps * 3 * challenge) / 100)) });
     }
   }
   if (stage % 3 === 0) {
@@ -411,7 +410,7 @@ function startStage(state: OrangeState): void {
   state.events.push({ t: 'stage', n: state.stage });
   if (state.stage % STAGE.bossEvery === 0) {
     const index = state.stage / STAGE.bossEvery;
-    const hp = Math.floor((expectedDps(state.stage) * BOSS.seconds * (100 + (index - 1) * BOSS.growthPercent)) / 100);
+    const hp = Math.floor((baseFirepower(state.player) * BOSS.seconds * (100 + (index - 1) * BOSS.growthPercent)) / 100);
     state.queue = [{ at: state.distance, kind: 'boss', x: FIELD.width / 2, hp }];
     state.bossActive = true;
     state.events.push({ t: 'bossIntro' });
