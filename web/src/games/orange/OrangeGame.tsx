@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GameComponentProps } from '../registry';
 import { loadSprites, type Sprites } from './assets';
+import { createAudio, tempoFor, type Audio, type MusicMood } from './audio';
 import { applyEvent, createEffects, updateEffects, type Effects } from './effects';
-import { FIELD, STEP_MS, createState, step, type OrangeState } from './engine';
+import { FIELD, STEP_MS, createState, isInfinite, step, type OrangeState } from './engine';
 import { GAME_OVER_LINES, TIPS, pick } from './jokes';
 import { drawScene, type Phase } from './render';
 import { VIEW } from './view';
@@ -27,6 +28,8 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
   const bestRef = useRef(best);
   const onStartRef = useRef(onStart);
   const onGameOverRef = useRef(onGameOver);
+  const audioRef = useRef<Audio | null>(null);
+  const [sound, setSound] = useState({ muted: false, volume: 0.7 });
 
   useEffect(() => {
     bestRef.current = best;
@@ -60,11 +63,17 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
     let accumulator = 0;
 
     const abort = new AbortController();
+    const audio = createAudio();
+    audioRef.current = audio;
+    setSound({ muted: audio.muted, volume: audio.volume });
+    void audio.loadVoices(ASSET_BASE, abort.signal);
     void loadSprites(ASSET_BASE, abort.signal).then((loaded) => {
       sprites = loaded;
     });
 
+    const moodOf = (): MusicMood => (isInfinite(state.stage) ? 'infinite' : state.bossActive ? 'boss' : 'run');
     const begin = () => {
+      audio.unlock();
       state = createState(newSeed());
       fx = createEffects();
       phase = 'playing';
@@ -144,6 +153,7 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
           step(state, { targetX: targetX() });
           for (const event of state.events) {
             applyEvent(fx, event, Math.random);
+            audio.play(event);
             if (event.t === 'over') {
               overLine = pick(GAME_OVER_LINES[event.cause], Math.floor(Math.random() * 100));
             }
@@ -151,8 +161,10 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
           updateEffects(fx);
           accumulator -= STEP_MS;
         }
+        audio.music(state.over ? null : moodOf(), tempoFor(state.stage, state.bossActive, isInfinite(state.stage)));
         if (state.over) {
           phase = 'over';
+          audio.music(null);
           overAt = performance.now();
           releaseAll();
           tip = pick(TIPS, Math.floor(Math.random() * TIPS.length));
@@ -175,6 +187,8 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
     window.addEventListener('pointercancel', onPointerUp);
     return () => {
       abort.abort();
+      audio.dispose();
+      audioRef.current = null;
       cancelAnimationFrame(frameId);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
@@ -186,6 +200,20 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
     };
   }, []);
 
+  const changeSound = (next: Partial<{ muted: boolean; volume: number }>) => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    if (next.muted !== undefined) {
+      audio.setMuted(next.muted);
+    }
+    if (next.volume !== undefined) {
+      audio.setVolume(next.volume);
+    }
+    setSound({ muted: audio.muted, volume: audio.volume });
+  };
+
   return (
     <div className="mx-auto" style={{ width: `min(100%, calc(78vh * ${VIEW.width} / ${VIEW.height}))` }}>
       <canvas
@@ -194,6 +222,26 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
         className="block w-full touch-none select-none rounded-xl border border-slate-700 bg-slate-950"
         style={{ aspectRatio: `${VIEW.width} / ${VIEW.height}` }}
       />
+      <div className="mt-2 flex items-center justify-end gap-2 text-sm text-slate-300">
+        <button
+          type="button"
+          aria-pressed={sound.muted}
+          aria-label={sound.muted ? '소리 켜기' : '소리 끄기'}
+          className="rounded-md border border-slate-700 px-2 py-1"
+          onClick={() => changeSound({ muted: !sound.muted })}
+        >
+          {sound.muted ? '🔇' : '🔊'}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          aria-label="소리 크기"
+          value={Math.round(sound.volume * 100)}
+          onChange={(event) => changeSound({ volume: Number(event.target.value) / 100, muted: false })}
+          className="w-28"
+        />
+      </div>
     </div>
   );
 }

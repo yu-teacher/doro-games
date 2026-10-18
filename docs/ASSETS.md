@@ -47,3 +47,7 @@ ssh mini 'bash -s -- --apply --refresh --report-only' < scripts/apply-gateway-ga
 - 이 저장소는 공개이므로 그림 파일 자체는 올리지 않는다. 그림의 **사용 권한은 올리는 사람이 책임진다.**
 - 배경 제거는 "테두리에서 이어지는 배경" 만 지운다. 잘린 상반신처럼 그림이 이미지 가장자리에 닿아 있으면 몸의 색이 배경 색으로 잡혀 지워질 수 있어서, 하늘 쪽만 쓰도록 `"edges": ["top"]` 처럼 지정한다(보스가 그렇다). 그림 속 구멍(팔 사이 등)은 남고, 배경과 비슷한 색이 윤곽선 없이 맞닿으면 번질 수 있어서 결과를 `--preview` 로 확인한다.
 - 스크립트 테스트: `python3 -m unittest scripts/assets/test_build_game_assets.py` (Pillow 필요, CI 에는 포함하지 않았다).
+
+## 목소리
+`scripts/assets/build-voices.sh` 가 고른 샘플을 `voice-cute/cheer/star/sigh.m4a` 로 복사한다(그림과 같은 곳에 올린다). 파일이 없으면 효과음만 난다.
+효과음과 배경음은 파일이 아니라 `web/src/games/orange/audio.ts` 에서 합성한다. 목소리 음원(macOS 내장 음성)의 재배포 조건은 확인하지 못했으므로 공개 배포 전에 점검한다.
