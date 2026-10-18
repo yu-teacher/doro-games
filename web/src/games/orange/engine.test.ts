@@ -249,9 +249,9 @@ describe('스테이지 스폰', () => {
     expect(kinds.has('grunt')).toBe(true);
     const boulder = state.enemies.find((e) => e.kind === 'boulder');
     if (boulder) {
-      // 스테이지 1: 내 화력 45 × 접근 시간 11초 × 도전 배율 41% × (60~140%)
-      expect(boulder.maxHp).toBeGreaterThanOrEqual(115);
-      expect(boulder.maxHp).toBeLessThanOrEqual(290);
+      // 스테이지 1: 내 화력 45 × 접근 시간 11초 × 도전 배율 41% × 적중 계수 32% × (60~140%)
+      expect(boulder.maxHp).toBeGreaterThanOrEqual(35);
+      expect(boulder.maxHp).toBeLessThanOrEqual(95);
     }
   });
 

@@ -78,6 +78,11 @@ const ENEMY = {
  * 난이도는 도전 배율(challengePercent)과 크기·속도·개수로 올린다. 도전 배율 100% 는 "접근하는 내내 계속 쏘면 겨우 부수는" 정도이고, 실제로는 다른 일도 해야 해서 55% 면 부술 수 있는 것이 70% 안팎, 비켜 가야 하는 것이 나머지가 된다.
  */
 const CHALLENGE = { startPercent: 40, perStage: 1, maxPercent: 55 } as const;
+/**
+ * 실제로 줄 수 있는 피해는 이론치(화력 × 접근 시간)보다 훨씬 적다: 총알이 부채꼴로 퍼져 일부는 빗나가고, 다른 적도 쏘고 피해야 한다.
+ * 그래서 귤 덩어리·무리·덩치의 체력에는 이 적중 계수를 곱한다(실제로 봇이 부순 비율로 맞춘 값).
+ */
+const HIT_EFFICIENCY_PERCENT = 32;
 
 const BOSS = {
   holdZ: px(340),
@@ -383,18 +388,18 @@ function planNormalStage(state: OrangeState, stage: number): void {
     .slice(0, boulderCount)
     .forEach((x, i) => {
       // 접근하는 동안(약 11초) 계속 쏘면 줄 수 있는 피해 × 도전 배율 × (60~140%): 부술 수 있는 것과 비켜 가야 하는 것이 섞인다
-      const hp = Math.max(10, Math.floor((dps * 11 * challenge * (60 + rand(state, 80))) / 10000));
+      const hp = Math.max(10, Math.floor((dps * 11 * challenge * HIT_EFFICIENCY_PERCENT * (60 + rand(state, 80))) / 1000000));
       queue.push({ at: base + px(240) + i * px(20), kind: 'boulder', x, hp, w: px(90) + rand(state, px(45)) });
     });
 
   // 몰려오는 무리: 전체 체력은 기대 화력의 약 3초치
   const count = Math.min(28, 3 + Math.floor((stage * 11) / 10) + rand(state, 3));
-  queue.push({ at: base + px(480), kind: 'crowd', x: px(60) + rand(state, FIELD.width - px(120)), hp: Math.max(2, Math.floor((dps * 7 * challenge) / (200 * count))), count });
+  queue.push({ at: base + px(480), kind: 'crowd', x: px(60) + rand(state, FIELD.width - px(120)), hp: Math.max(2, Math.floor((dps * 7 * challenge * HIT_EFFICIENCY_PERCENT) / (20000 * count))), count });
 
   if (stage >= 4) {
     const bruteCount = 1 + (stage >= 9 ? 1 : 0);
     for (let i = 0; i < bruteCount; i += 1) {
-      queue.push({ at: base + px(600) + i * px(30), kind: 'brute', x: STAGE.lanes[rand(state, 3)], hp: Math.max(4, Math.floor((dps * 3 * challenge) / 100)) });
+      queue.push({ at: base + px(600) + i * px(30), kind: 'brute', x: STAGE.lanes[rand(state, 3)], hp: Math.max(4, Math.floor((dps * 3 * challenge * HIT_EFFICIENCY_PERCENT) / 10000)) });
     }
   }
   if (stage % 3 === 0) {
