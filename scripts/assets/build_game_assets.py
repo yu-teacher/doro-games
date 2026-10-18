@@ -162,6 +162,21 @@ def process_frames(entry: dict, source: Path) -> tuple[Image.Image, int]:
     return sheet, len(cut)
 
 
+_REMBG_SESSION = None
+
+
+def rembg_cut(im: Image.Image) -> Image.Image:
+    """rembg(애니메 모델)로 배경을 지운다. rembg 는 이 옵션을 쓸 때만 불러온다(선택 의존성)."""
+    global _REMBG_SESSION
+    try:
+        from rembg import new_session, remove
+    except ImportError as error:
+        raise RuntimeError("cutout=rembg 에는 rembg 가 필요하다: pip install 'rembg[cpu]'") from error
+    if _REMBG_SESSION is None:
+        _REMBG_SESSION = new_session("isnet-anime")
+    return remove(im, session=_REMBG_SESSION).convert("RGBA")
+
+
 def process(entry: dict, source: Path) -> tuple[Image.Image, str]:
     """스펙 한 줄을 가공해 (이미지, 저장 형식) 을 돌려준다."""
     src = (source / entry["src"]).resolve()
@@ -180,6 +195,10 @@ def process(entry: dict, source: Path) -> tuple[Image.Image, str]:
         raise ValueError(f"edges 는 {ALL_EDGES} 중에서 골라야 한다: {edges}")
     if cutout == "adaptive":
         im = trim(cut_out(fit_work_size(im), edges))
+        fmt = "WEBP"
+    elif cutout == "rembg":
+        # 모양을 알아보는 AI 배경 제거. 복잡한 배경에서는 색 기준 방식보다 깔끔하지만 만화체는 가끔 몸을 지운다(미리보기로 확인할 것)
+        im = trim(rembg_cut(fit_work_size(im)))
         fmt = "WEBP"
     elif cutout == "none":
         fmt = "WEBP"

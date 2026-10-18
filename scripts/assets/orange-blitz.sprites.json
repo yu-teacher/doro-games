@@ -2,7 +2,7 @@
   "sprites": {
     "hero": {
       "src": "costumes/costumes-024-peashooter-hat.webp",
-      "cutout": "adaptive",
+      "cutout": "rembg",
       "height": 128
     },
     "swarm": {
@@ -24,10 +24,7 @@
     },
     "boss": {
       "src": "characters/characters-024-buff-boss.jpg",
-      "cutout": "adaptive",
-      "edges": [
-        "top"
-      ],
+      "cutout": "rembg",
       "height": 300
     },
     "chicken": {
@@ -175,25 +172,22 @@
     "boss": [
       {
         "src": "characters/characters-024-buff-boss.jpg",
-        "cutout": "adaptive",
-        "height": 300,
-        "edges": [
-          "top"
-        ]
+        "cutout": "rembg",
+        "height": 300
       },
       {
         "src": "costumes/costumes-003-saiyan-armor.jpg",
-        "cutout": "adaptive",
+        "cutout": "rembg",
         "height": 300
       },
       {
         "src": "costumes/costumes-023-royal-robe.png",
-        "cutout": "adaptive",
+        "cutout": "rembg",
         "height": 300
       },
       {
         "src": "costumes/costumes-020-statue-of-liberty.png",
-        "cutout": "adaptive",
+        "cutout": "rembg",
         "height": 300
       }
     ]

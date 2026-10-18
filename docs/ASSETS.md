@@ -51,3 +51,6 @@ ssh mini 'bash -s -- --apply --refresh --report-only' < scripts/apply-gateway-ga
 ## 목소리
 `scripts/assets/build-voices.sh` 가 고른 샘플을 `voice-cute/cheer/star/sigh.m4a` 로 복사한다(그림과 같은 곳에 올린다). 파일이 없으면 효과음만 난다.
 효과음과 배경음은 파일이 아니라 `web/src/games/orange/audio.ts` 에서 합성한다. 목소리 음원(macOS 내장 음성)의 재배포 조건은 확인하지 못했으므로 공개 배포 전에 점검한다.
+
+## 누끼 방식
+`cutout` 은 `adaptive`(가장자리 색 기준, 기본), `rembg`(AI, 복잡한 배경에 유리), `none` 중에서 고른다. `rembg` 는 선택 의존성이라 가공할 때만 필요하다(`pip install "rembg[cpu]"`, 첫 실행 때 모델 약 170MB 를 받는다). 만화체는 몸을 지우는 경우가 있으니 미리보기(`--preview`)로 확인하고 사진마다 고른다.
