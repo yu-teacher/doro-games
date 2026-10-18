@@ -51,4 +51,18 @@ describe('화면 효과', () => {
     expect(fx.texts.length).toBeLessThanOrEqual(14);
     expect(fx.particles.length).toBeLessThanOrEqual(160);
   });
+
+  it('맞힐 때마다 불꽃이 튀지만 피해 숫자는 몇 틱에 한 번만 뜬다', () => {
+    const fx = createEffects();
+    for (let i = 0; i < 5; i += 1) {
+      applyEvent(fx, { t: 'hit', kind: 'grunt', x: 18000, z: 30000, damage: 12 }, rnd);
+    }
+    expect(fx.particles.length).toBeGreaterThan(0);
+    expect(fx.texts.length).toBe(1);
+    for (let i = 0; i < 10; i += 1) {
+      updateEffects(fx);
+    }
+    applyEvent(fx, { t: 'hit', kind: 'grunt', x: 18000, z: 30000, damage: 12 }, rnd);
+    expect(fx.texts.filter((t) => t.text === '12').length).toBeGreaterThanOrEqual(1);
+  });
 });

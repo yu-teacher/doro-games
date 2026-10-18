@@ -1,5 +1,6 @@
 import { type EnemyKind, type GameEvent } from './engine';
 import { project } from './view';
+import { formatCount } from './format';
 import { BOMB_QUIPS, BOSS_DOWN, WARN_SUB, WARN_TEXT, INFINITE_LINES, INFINITE_TITLE, BOSS_INTRO, BOSS_NAME, BOSS_SHIELD, GATE_TITLES, gateValueText, isTrap, pick, quipFor } from './jokes';
 
 /** 화면 효과(말풍선, 반짝임, 흔들림). 게임 규칙과 무관하고 엔진의 난수도 쓰지 않는다. 좌표는 px 이다. */
@@ -48,6 +49,8 @@ export interface Effects {
   warnings: Warning[];
   /** 보스 접근 같은 큰 위험의 화면 경고(남은 틱) */
   alarm: number;
+  /** 다음 피해 숫자를 띄울 수 있을 때까지 남은 틱(총알이 많아도 숫자가 화면을 덮지 않게) */
+  hitCooldown: number;
 }
 
 export const COLORS = {
@@ -73,7 +76,7 @@ const KIND_COLORS: Record<EnemyKind, string> = {
 };
 
 export function createEffects(): Effects {
-  return { texts: [], particles: [], shake: 0, banner: null, warnings: [], alarm: 0 };
+  return { texts: [], particles: [], shake: 0, banner: null, warnings: [], alarm: 0, hitCooldown: 0 };
 }
 
 function addText(fx: Effects, text: string, x: number, y: number, color: string, size = 15, life = 50): void {
@@ -99,6 +102,18 @@ export function applyEvent(fx: Effects, event: GameEvent, rnd: () => number): vo
   const pickIndex = Math.floor(rnd() * 1000);
   const quip = quipFor(event, pickIndex);
   switch (event.t) {
+    case 'hit': {
+      const at = project(event.x, event.z);
+      // 불꽃은 가볍게, 숫자는 몇 틱에 한 번만(보스·덩치·돌덩이는 더 자주 보여 준다)
+      if (fx.particles.length < MAX_PARTICLES) {
+        burst(fx, at.x, at.y - 14, '#fde68a', 2, rnd, 1.6);
+      }
+      if (fx.hitCooldown <= 0) {
+        addText(fx, formatCount(event.damage), at.x + (rnd() - 0.5) * 24, at.y - 24, COLORS.gold, 12, 26);
+        fx.hitCooldown = event.kind === 'boss' || event.kind === 'brute' || event.kind === 'boulder' ? 5 : 9;
+      }
+      break;
+    }
     case 'kill': {
       const at = project(event.x, event.z);
       burst(fx, at.x, at.y, KIND_COLORS[event.kind], event.kind === 'boss' ? 40 : event.kind === 'boulder' ? 16 : 5, rnd);
@@ -207,6 +222,9 @@ export function updateEffects(fx: Effects): void {
     w.age += 1;
   });
   fx.warnings = fx.warnings.filter((w) => w.age < w.life);
+  if (fx.hitCooldown > 0) {
+    fx.hitCooldown -= 1;
+  }
   if (fx.alarm > 0) {
     fx.alarm -= 1;
   }

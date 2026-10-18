@@ -247,6 +247,7 @@ interface Spawn {
 }
 
 export type GameEvent =
+  | { t: 'hit'; kind: EnemyKind; x: number; z: number; damage: number }
   | { t: 'kill'; kind: EnemyKind; x: number; z: number; points: number }
   | { t: 'gate'; kind: GateKind; value: number; x: number }
   | { t: 'item'; kind: ItemKind; x: number }
@@ -891,6 +892,7 @@ function moveBullets(state: OrangeState): void {
       if (target.shielded <= 0) {
         target.hp -= bullet.damage;
         target.flash = 4;
+        state.events.push({ t: 'hit', kind: target.kind, x: bullet.x, z: target.z, damage: bullet.damage });
       }
       bullet.lastHit = target.id;
       if (bullet.pierce > 0) {

@@ -209,6 +209,7 @@ describe('적과 점수', () => {
     expect(state.kills).toBe(1);
     expect(state.score).toBe(10);
     expect(events).toContain('kill');
+    expect(events).toContain('hit');
   });
 
   it('거대 귤 덩어리는 체력이 크고 점수는 체력에 비례해 더 받는다', () => {
