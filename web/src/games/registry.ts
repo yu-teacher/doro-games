@@ -1,7 +1,9 @@
 import type { ComponentType } from 'react';
+import OrangeThumbnail from '../components/OrangeThumbnail';
 import Thumbnail2048 from '../components/Thumbnail2048';
 import RunnerThumbnail from '../components/RunnerThumbnail';
 import Game2048 from './g2048/Game2048';
+import OrangeGame from './orange/OrangeGame';
 import RunnerGame from './runner/RunnerGame';
 
 /** 모든 미니게임이 따르는 공통 규약. 게임은 규칙과 그리기만 맡고, 판 시작·기록 제출은 페이지가 맡는다. */
@@ -18,10 +20,12 @@ export interface GameComponentProps {
 export const GAME_COMPONENTS: Record<string, ComponentType<GameComponentProps>> = {
   runner: RunnerGame,
   '2048': Game2048,
+  'orange-blitz': OrangeGame,
 };
 
 /** 로비 카드의 대표 그림. 없는 게임은 카드가 그림 없이 나온다. */
 export const GAME_THUMBNAILS: Record<string, ComponentType> = {
   runner: RunnerThumbnail,
   '2048': Thumbnail2048,
+  'orange-blitz': OrangeThumbnail,
 };

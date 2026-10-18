@@ -1,0 +1,274 @@
+{
+  "sprites": {
+    "hero": {
+      "src": "costumes/costumes-018-cowboy-gun.png",
+      "cutout": "rembg",
+      "height": 128
+    },
+    "swarm": {
+      "src": "characters/characters-011-flying-swarm.png",
+      "crop": [
+        0.14,
+        0.38,
+        0.56,
+        0.8
+      ],
+      "cutout": "adaptive",
+      "height": 96
+    },
+    "slime": {
+      "src": "characters/characters-018-slime.gif",
+      "cutout": "adaptive",
+      "height": 96,
+      "frames": 8
+    },
+    "boss": {
+      "src": "characters/characters-024-buff-boss.jpg",
+      "cutout": "rembg",
+      "height": 300
+    },
+    "chicken": {
+      "src": "costumes/costumes-026-chicken-suit.png",
+      "crop": [
+        0.0,
+        0.06,
+        1.0,
+        1.0
+      ],
+      "cutout": "adaptive",
+      "height": 64
+    },
+    "star": {
+      "src": "items/items-002-sparkle-star.gif",
+      "cutout": "adaptive",
+      "height": 64
+    },
+    "bg": {
+      "src": "backgrounds/backgrounds-009-forest-eggs.gif",
+      "cutout": "none",
+      "width": 540
+    }
+  },
+  "variants": {
+    "bg": [
+      {
+        "src": "backgrounds/backgrounds-009-forest-eggs.gif",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-001-grassland-house.jpg",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-016-meadow-sun.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-011-autumn-road.jpg",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-014-pumpkin-field.jpg",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-005-fantasy-town.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-012-snow-hotspring.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-017-beach-balloon.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-006-clouds.png",
+        "cutout": "none",
+        "width": 540
+      },
+      {
+        "src": "backgrounds/backgrounds-013-black-hole.png",
+        "cutout": "none",
+        "width": 540
+      }
+    ],
+    "grunt": [
+      {
+        "src": "characters/characters-011-flying-swarm.png",
+        "cutout": "adaptive",
+        "height": 96,
+        "crop": [
+          0.14,
+          0.38,
+          0.56,
+          0.8
+        ]
+      },
+      {
+        "src": "costumes/costumes-026-chicken-suit.png",
+        "cutout": "adaptive",
+        "height": 96,
+        "crop": [
+          0,
+          0.06,
+          1,
+          1
+        ]
+      },
+      {
+        "src": "costumes/costumes-033-bunny-onesie.png",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-004-hardhat.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-002-hanbok.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-009.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-030.png",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-029-maid-broom.gif",
+        "cutout": "rembg",
+        "height": 96,
+        "frames": 8
+      },
+      {
+        "src": "costumes/costumes-025.png",
+        "cutout": "adaptive",
+        "height": 96
+      }
+    ],
+    "brute": [
+      {
+        "src": "characters/characters-018-slime.gif",
+        "cutout": "adaptive",
+        "height": 96,
+        "frames": 8
+      },
+      {
+        "src": "costumes/costumes-022-shark-suit.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-032-dino-onesie.png",
+        "cutout": "adaptive",
+        "height": 96
+      },
+      {
+        "src": "costumes/costumes-013-watermelon-helmet.jpg",
+        "cutout": "adaptive",
+        "height": 96
+      }
+    ],
+    "boss": [
+      {
+        "src": "characters/characters-024-buff-boss.jpg",
+        "cutout": "rembg",
+        "height": 300
+      },
+      {
+        "src": "costumes/costumes-023-royal-robe.png",
+        "cutout": "rembg",
+        "height": 300
+      },
+      {
+        "src": "costumes/costumes-010.gif",
+        "cutout": "rembg",
+        "height": 300
+      },
+      {
+        "src": "costumes/costumes-025.png",
+        "cutout": "rembg",
+        "height": 300
+      }
+    ],
+    "hero": [
+      {
+        "src": "costumes/costumes-018-cowboy-gun.png",
+        "cutout": "rembg",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-004-hardhat.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-002-hanbok.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-033-bunny-onesie.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-025.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-009.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-030.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-032-dino-onesie.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-022-shark-suit.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-013-watermelon-helmet.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-026-chicken-suit.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-029-maid-broom.gif",
+        "cutout": "rembg",
+        "height": 128,
+        "frames": 8
+      }
+    ]
+  }
+}

@@ -157,4 +157,20 @@ class GameHttpTest extends GamesHttpTestBase {
         send(user, post("/api/v1/games/{s}/runs/{r}/score", "2048", tooBig).contentType(MediaType.APPLICATION_JSON).content("{\"score\":3932157}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("SCORE-400-01"));
     }
+
+    @Test
+    @DisplayName("귤 폭격 도로롱은 열려 있고, 판 시간 안에 낼 수 있는 점수만 기록한다")
+    void orangeBlitz() throws Exception {
+        mockMvc.perform(get("/api/v1/games/orange-blitz")).andExpect(status().isOk());
+        TestUser user = newUser();
+
+        String ok = startRun(user, "orange-blitz");
+        send(user, post("/api/v1/games/{s}/runs/{r}/score", "orange-blitz", ok).contentType(MediaType.APPLICATION_JSON).content("{\"score\":4200}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.best").value(4200));
+
+        // 판을 시작하자마자 낼 수 없는 값(네트워크 여유를 합쳐도 초당 30000점 한도를 넘는다)은 거절한다
+        String tooFast = startRun(user, "orange-blitz");
+        send(user, post("/api/v1/games/{s}/runs/{r}/score", "orange-blitz", tooFast).contentType(MediaType.APPLICATION_JSON).content("{\"score\":300000}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("SCORE-400-01"));
+    }
 }
