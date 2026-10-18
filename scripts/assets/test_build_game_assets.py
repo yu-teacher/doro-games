@@ -127,5 +127,46 @@ class BuildTest(unittest.TestCase):
                 b.process({"src": "a.png"}, root / "src")
 
 
+class AnimatedTest(unittest.TestCase):
+    def make_gif(self, path: Path, count: int = 4) -> None:
+        frames = []
+        for i in range(count):
+            im = Image.new("RGB", (120, 120), (255, 255, 255))
+            d = ImageDraw.Draw(im)
+            x = 30 + i * 8
+            d.ellipse((x, 30, x + 50, 80), fill=(220, 40, 40), outline=(0, 0, 0), width=3)
+            frames.append(im)
+        frames[0].save(path, save_all=True, append_images=frames[1:], duration=100, loop=0)
+
+    def test_움직이는_그림은_장면마다_누끼를_따서_가로_시트가_된다(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src").mkdir()
+            self.make_gif(root / "src" / "m.gif")
+            spec = {"sprites": {"hero": {"src": "m.gif", "cutout": "adaptive", "height": 40, "frames": 4}}}
+            meta = b.build(spec, root / "src", root / "out")["sprites"]["hero"]
+            self.assertEqual(meta["frames"], 4)
+            self.assertEqual(meta["h"], 40)
+            sheet = Image.open(root / "out" / meta["file"])
+            self.assertEqual(sheet.size, (meta["w"] * 4, 40))
+            self.assertEqual(sheet.getpixel((1, 1))[3], 0)  # 바깥은 투명
+
+    def test_장면이_모자라면_있는_만큼만_쓴다(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src").mkdir()
+            self.make_gif(root / "src" / "m.gif", 2)
+            spec = {"sprites": {"hero": {"src": "m.gif", "cutout": "adaptive", "height": 40, "frames": 8}}}
+            self.assertEqual(b.build(spec, root / "src", root / "out")["sprites"]["hero"]["frames"], 2)
+
+    def test_한_장짜리는_frames_항목이_manifest_에_없다(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src").mkdir()
+            sample(root / "src" / "a.png")
+            spec = {"sprites": {"hero": {"src": "a.png", "cutout": "adaptive", "height": 40}}}
+            self.assertNotIn("frames", b.build(spec, root / "src", root / "out")["sprites"]["hero"])
+
+
 if __name__ == "__main__":
     unittest.main()

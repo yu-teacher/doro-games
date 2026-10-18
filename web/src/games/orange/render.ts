@@ -19,7 +19,7 @@ import {
   type OrangeState,
 } from './engine';
 import { formatCount } from './format';
-import { variantOf } from './assets';
+import { frameAt, frameCount, variantOf } from './assets';
 import { BOSS_NAME, GATE_TITLES, HIDDEN_TEXT, HIDDEN_TITLE, WARN_BOSS, gateValueText, isTrap, pick, rankTitle } from './jokes';
 import { HORIZON_Y, PLAYER_Y, VIEW, project } from './view';
 
@@ -75,11 +75,15 @@ function text(ctx: CanvasRenderingContext2D, value: string, x: number, y: number
 }
 
 /** 상자 안에 비율을 지켜 그림을 그린다(가운데 기준). */
-function drawImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, cx: number, cy: number, w: number, h: number): void {
-  const scale = Math.min(w / image.naturalWidth, h / image.naturalHeight);
-  const dw = image.naturalWidth * scale;
+function drawImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, cx: number, cy: number, w: number, h: number, phase = 0): void {
+  // 움직이는 그림은 가로로 이어 붙인 시트라서 지금 장면만 잘라 그린다
+  const frames = frameCount(image);
+  const frameW = image.naturalWidth / frames;
+  const scale = Math.min(w / frameW, h / image.naturalHeight);
+  const dw = frameW * scale;
   const dh = image.naturalHeight * scale;
-  ctx.drawImage(image, cx - dw / 2, cy - dh / 2, dw, dh);
+  const sx = frameAt(frames, performance.now(), phase) * frameW;
+  ctx.drawImage(image, sx, 0, frameW, image.naturalHeight, cx - dw / 2, cy - dh / 2, dw, dh);
 }
 
 function blob(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number, color: string): void {
@@ -162,11 +166,11 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, key: SpriteKey, cx: numb
 /** 전용 그림이 없는 적이 대신 쓰는 그림(그림도 없으면 도형) */
 const SPRITE_FALLBACK: Partial<Record<SpriteKey, SpriteKey>> = { runner: 'swarm', sniper: 'slime' };
 
-function sprite(ctx: CanvasRenderingContext2D, sprites: Sprites, key: SpriteKey, cx: number, cy: number, w: number, h: number, override?: HTMLImageElement): void {
+function sprite(ctx: CanvasRenderingContext2D, sprites: Sprites, key: SpriteKey, cx: number, cy: number, w: number, h: number, override?: HTMLImageElement, phase = 0): void {
   const fallback = SPRITE_FALLBACK[key];
   const image = override ?? sprites[key] ?? (fallback ? sprites[fallback] : undefined);
   if (image) {
-    drawImage(ctx, image, cx, cy, w, h);
+    drawImage(ctx, image, cx, cy, w, h, phase);
   } else {
     drawPlaceholder(ctx, key, cx, cy, w, h);
   }
@@ -328,11 +332,11 @@ function drawActor(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): v
     ctx.globalAlpha = 0.7;
   }
   const skin = enemySkin(scene, enemy);
-  sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w, skin);
+  sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w, skin, enemy.seed);
   if (enemy.flash > 0) {
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.5;
-    sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w, skin);
+    sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w, skin, enemy.seed);
   }
   ctx.restore();
   if (enemy.shielded > 0) {

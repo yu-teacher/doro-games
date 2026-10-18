@@ -124,6 +124,44 @@ def fit_work_size(im: Image.Image) -> Image.Image:
     return im if scale >= 1 else im.resize((max(1, round(im.width * scale)), max(1, round(im.height * scale))), Image.LANCZOS)
 
 
+MAX_FRAMES = 12
+
+
+def sample_frames(path: Path, count: int) -> list[Image.Image]:
+    """움직이는 그림(GIF·WebP)에서 count 장을 고르게 뽑는다. 장면이 모자라면 있는 만큼만."""
+    with Image.open(path) as im:
+        total = getattr(im, "n_frames", 1)
+        count = max(1, min(count, MAX_FRAMES, total))
+        picks = sorted({round(i * total / count) % total for i in range(count)})
+        frames = []
+        for index in picks:
+            im.seek(index)
+            frames.append(im.convert("RGBA"))
+        return frames
+
+
+def process_frames(entry: dict, source: Path) -> tuple[Image.Image, int]:
+    """움직이는 그림을 장면마다 누끼를 따서 가로로 이어 붙인 시트로 만든다. (시트, 장면 수) 를 돌려준다."""
+    src = (source / entry["src"]).resolve()
+    if source.resolve() not in src.parents:
+        raise ValueError(f"원본이 --source 밖을 가리킨다: {entry['src']}")
+    if entry.get("cutout", "none") != "adaptive" or "height" not in entry:
+        raise ValueError("frames 는 cutout=adaptive 와 height 가 필요하다")
+    edges = tuple(entry.get("edges", ALL_EDGES))
+    cut = [cut_out(fit_work_size(f), edges) for f in sample_frames(src, int(entry["frames"]))]
+    # 모든 장면이 같은 틀을 쓰도록 불투명한 영역의 합집합으로 자른다(그래야 움직일 때 몸이 덜덜 떨리지 않는다)
+    boxes = [b for b in (f.getchannel("A").point(lambda v: 255 if v > ALPHA_FLOOR else 0).getbbox() for f in cut) if b]
+    if boxes:
+        box = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+        cut = [f.crop(box) for f in cut]
+    scale = entry["height"] / cut[0].height
+    size = (max(1, round(cut[0].width * scale)), entry["height"])
+    sheet = Image.new("RGBA", (size[0] * len(cut), size[1]))
+    for i, f in enumerate(cut):
+        sheet.paste(f.resize(size, Image.LANCZOS), (i * size[0], 0))
+    return sheet, len(cut)
+
+
 def process(entry: dict, source: Path) -> tuple[Image.Image, str]:
     """스펙 한 줄을 가공해 (이미지, 저장 형식) 을 돌려준다."""
     src = (source / entry["src"]).resolve()
@@ -168,11 +206,19 @@ def build(spec: dict, source: Path, out: Path) -> dict:
     manifest: dict = {"version": int(time.time()), "sprites": {}, "variants": {}}
 
     def emit(key: str, entry: dict) -> dict:
-        im, fmt = process(entry, source)
+        frames = 1
+        if entry.get("frames", 1) > 1:
+            im, frames = process_frames(entry, source)
+            fmt = "WEBP"
+        else:
+            im, fmt = process(entry, source)
         data = encode(im, fmt)
         name = f"{key}-{hashlib.sha1(data).hexdigest()[:10]}.webp"
         (out / name).write_bytes(data)
-        return {"file": name, "w": im.width, "h": im.height}
+        meta = {"file": name, "w": im.width // frames, "h": im.height}
+        if frames > 1:
+            meta["frames"] = frames
+        return meta
 
     for key, entry in spec["sprites"].items():
         if not SAFE_KEY.match(key):

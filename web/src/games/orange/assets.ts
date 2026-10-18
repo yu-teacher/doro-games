@@ -17,6 +17,23 @@ interface SpriteMeta {
   file: string;
   w: number;
   h: number;
+  /** 움직이는 그림이면 가로로 이어 붙인 장면 수(한 장면의 너비가 w) */
+  frames?: number;
+}
+
+const MAX_FRAMES = 12;
+
+/** 불러온 그림이 몇 장면짜리 시트인지(대부분은 1) */
+const frameCounts = new WeakMap<HTMLImageElement, number>();
+
+export function frameCount(image: HTMLImageElement): number {
+  return frameCounts.get(image) ?? 1;
+}
+
+/** 시각(ms)에 맞는 장면 번호. 한 장면은 FRAME_MS 동안 보여 주고, offset 으로 개체마다 시작을 어긋나게 한다. */
+export const FRAME_MS = 110;
+export function frameAt(frames: number, nowMs: number, offset = 0): number {
+  return frames <= 1 ? 0 : (Math.floor(nowMs / FRAME_MS) + Math.abs(offset)) % frames;
 }
 
 export interface Manifest {
@@ -42,7 +59,11 @@ function parseMeta(entry: unknown): SpriteMeta | null {
   }
   const { file, w, h } = entry as { file?: unknown; w?: unknown; h?: unknown };
   // 파일 이름은 같은 폴더의 평범한 이름만 허용한다(경로 이동·외부 주소 금지)
-  return typeof file === 'string' && /^[A-Za-z0-9._-]+$/.test(file) && typeof w === 'number' && typeof h === 'number' ? { file, w, h } : null;
+  if (typeof file !== 'string' || !/^[A-Za-z0-9._-]+$/.test(file) || typeof w !== 'number' || typeof h !== 'number') {
+    return null;
+  }
+  const frames = (entry as { frames?: unknown }).frames;
+  return typeof frames === 'number' && Number.isInteger(frames) && frames > 1 && frames <= MAX_FRAMES ? { file, w, h, frames } : { file, w, h };
 }
 
 /** manifest 에서 알 수 없는 키·잘못된 모양은 버린다(서버의 파일을 그대로 믿지 않는다). */
@@ -77,10 +98,13 @@ export function parseManifest(raw: unknown): Manifest | null {
   return { version, sprites: clean, variants: cleanVariants };
 }
 
-function loadImage(url: string): Promise<HTMLImageElement | null> {
+function loadImage(url: string, frames = 1): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const image = new Image();
-    image.onload = () => resolve(image);
+    image.onload = () => {
+      frameCounts.set(image, frames);
+      resolve(image);
+    };
     image.onerror = () => resolve(null);
     image.src = url;
   });
@@ -100,7 +124,7 @@ export async function loadSprites(base: string, signal?: AbortSignal): Promise<S
     const entries = await Promise.all(
       (Object.keys(manifest.sprites) as SpriteKey[]).map(async (key) => {
         const meta = manifest.sprites[key];
-        return [key, meta ? await loadImage(`${base}${meta.file}`) : null] as const;
+        return [key, meta ? await loadImage(`${base}${meta.file}`, meta.frames) : null] as const;
       }),
     );
     const sprites: Sprites = {};
@@ -116,7 +140,7 @@ export async function loadSprites(base: string, signal?: AbortSignal): Promise<S
       if (!metas) {
         continue;
       }
-      const images = await Promise.all(metas.map((meta) => loadImage(`${base}${meta.file}`)));
+      const images = await Promise.all(metas.map((meta) => loadImage(`${base}${meta.file}`, meta.frames)));
       const ok = images.filter((image): image is HTMLImageElement => image !== null);
       if (ok.length > 0) {
         variants[key] = ok;

@@ -19,7 +19,8 @@
     "slime": {
       "src": "characters/characters-018-slime.gif",
       "cutout": "adaptive",
-      "height": 96
+      "height": 96,
+      "frames": 8
     },
     "boss": {
       "src": "characters/characters-024-buff-boss.jpg",
@@ -152,7 +153,8 @@
       {
         "src": "characters/characters-018-slime.gif",
         "cutout": "adaptive",
-        "height": 96
+        "height": 96,
+        "frames": 8
       },
       {
         "src": "costumes/costumes-022-shark-suit.jpg",

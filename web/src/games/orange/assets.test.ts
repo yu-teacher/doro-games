@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseManifest, variantOf, type Sprites } from './assets';
+import { FRAME_MS, frameAt, parseManifest, variantOf, type Sprites } from './assets';
 
 describe('parseManifest', () => {
   it('올바른 manifest 는 알려진 키만 남긴다', () => {
@@ -58,5 +58,24 @@ describe('변형 그림', () => {
     expect(variantOf(sprites, 'grunt', -1)).toBe(b);
     expect(variantOf(sprites, 'brute', 5)).toBe(b);
     expect(variantOf({}, 'boss', 0)).toBeUndefined();
+  });
+});
+
+describe('움직이는 그림', () => {
+  it('frames 는 2~12 정수일 때만 읽는다', () => {
+    const read = (frames: unknown) => parseManifest({ version: 1, sprites: { hero: { file: 'h.webp', w: 10, h: 10, frames } } })?.sprites.hero;
+    expect(read(6)?.frames).toBe(6);
+    expect(read(1)?.frames).toBeUndefined();
+    expect(read(99)?.frames).toBeUndefined();
+    expect(read(2.5)?.frames).toBeUndefined();
+    expect(read('4')?.frames).toBeUndefined();
+  });
+
+  it('장면 번호는 시간에 따라 돌고 개체마다 어긋난다', () => {
+    expect(frameAt(1, 12345)).toBe(0);
+    expect(frameAt(4, 0)).toBe(0);
+    expect(frameAt(4, FRAME_MS)).toBe(1);
+    expect(frameAt(4, FRAME_MS * 4)).toBe(0);
+    expect(frameAt(4, 0, 3)).toBe(3);
   });
 });
