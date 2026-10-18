@@ -11,13 +11,14 @@ import {
   infiniteLevel,
   isInfinite,
   LANE_COUNT,
+  LANE_WIDTH,
   type Enemy,
   type Gate,
   type ItemKind,
   type OrangeState,
 } from './engine';
 import { formatCount } from './format';
-import { BOSS_NAME, GATE_TITLES, HIDDEN_TEXT, HIDDEN_TITLE, gateValueText, isTrap, pick, rankTitle } from './jokes';
+import { BOSS_NAME, GATE_TITLES, HIDDEN_TEXT, HIDDEN_TITLE, WARN_BOSS, gateValueText, isTrap, pick, rankTitle } from './jokes';
 import { HORIZON_Y, PLAYER_Y, VIEW, project } from './view';
 
 /** 그리기 전용. 상태를 읽기만 하고 바꾸지 않는다. 그림이 없으면 도형으로 대신 그린다. */
@@ -132,6 +133,19 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, key: SpriteKey, cx: numb
       blob(ctx, cx + w * 0.42, cy, w * 0.32, w * 0.32, '#f6c8a0');
       eyes(ctx, cx, cy - h * 0.25, w * 0.12, w * 0.06, true);
       break;
+    case 'runner':
+      blob(ctx, cx, cy, w, h * 0.8, '#ef4444');
+      eyes(ctx, cx, cy - 1, w * 0.2, w * 0.11, true);
+      break;
+    case 'sniper':
+      blob(ctx, cx, cy + 2, w, h * 0.9, '#0f766e');
+      eyes(ctx, cx, cy, w * 0.2, w * 0.1, true);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy - h * 0.55, w * 0.18, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
     case 'bg':
       break;
     default:
@@ -139,12 +153,16 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, key: SpriteKey, cx: numb
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#fff';
-      ctx.fillText(ITEM_EMOJI[key], cx, cy);
+      ctx.fillText(ITEM_EMOJI[key as ItemKind], cx, cy);
   }
 }
 
+/** 전용 그림이 없는 적이 대신 쓰는 그림(그림도 없으면 도형) */
+const SPRITE_FALLBACK: Partial<Record<SpriteKey, SpriteKey>> = { runner: 'swarm', sniper: 'slime' };
+
 function sprite(ctx: CanvasRenderingContext2D, sprites: Sprites, key: SpriteKey, cx: number, cy: number, w: number, h: number): void {
-  const image = sprites[key];
+  const fallback = SPRITE_FALLBACK[key];
+  const image = sprites[key] ?? (fallback ? sprites[fallback] : undefined);
   if (image) {
     drawImage(ctx, image, cx, cy, w, h);
   } else {
@@ -281,8 +299,8 @@ function drawBoulder(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
 
 function drawActor(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): void {
   const at = project(enemy.x, enemy.z);
-  const key: SpriteKey = enemy.kind === 'brute' ? 'slime' : enemy.kind === 'boss' ? 'boss' : 'swarm';
-  const base = enemy.kind === 'brute' ? SIZE.brute : enemy.kind === 'boss' ? enemy.w / PX : SIZE.grunt;
+  const key: SpriteKey = enemy.kind === 'brute' ? 'slime' : enemy.kind === 'boss' ? 'boss' : enemy.kind === 'runner' ? 'runner' : enemy.kind === 'sniper' ? 'sniper' : 'swarm';
+  const base = enemy.kind === 'brute' ? SIZE.brute : enemy.kind === 'boss' ? enemy.w / PX : enemy.kind === 'sniper' ? SIZE.brute * 0.8 : enemy.kind === 'runner' ? SIZE.grunt * 0.85 : SIZE.grunt;
   const w = base * at.scale;
   const hop = enemy.kind === 'boss' ? 0 : Math.abs(Math.sin((scene.state.tick + enemy.seed) * 0.3)) * 4 * at.scale;
   shadow(ctx, at.x, at.y, w * 0.9);
@@ -307,6 +325,23 @@ function drawActor(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): v
   if (enemy.kind === 'brute') {
     text(ctx, formatCount(enemy.hp), at.x, at.y - w * 1.08, Math.max(8, 15 * at.scale), '#fff');
   }
+}
+
+function drawSeed(ctx: CanvasRenderingContext2D, x: number, z: number, tick: number): void {
+  const at = project(x, z);
+  const size = SIZE.dumbbell * 0.6 * at.scale;
+  ctx.save();
+  ctx.translate(at.x, at.y - size * 0.9);
+  ctx.rotate(tick * 0.25);
+  ctx.fillStyle = '#7c2d12';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, size * 0.4, size * 0.65, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fdba74';
+  ctx.beginPath();
+  ctx.ellipse(-size * 0.1, -size * 0.2, size * 0.12, size * 0.25, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawDumbbell(ctx: CanvasRenderingContext2D, x: number, z: number, tick: number): void {
@@ -435,6 +470,48 @@ function drawOverlay(ctx: CanvasRenderingContext2D, scene: Scene): void {
   text(ctx, scene.touch ? '탭해서 다시 시작' : '스페이스 · 클릭으로 다시 시작', VIEW.width / 2, 440, 18, '#fff');
 }
 
+/** 위험한 줄을 붉게 깜빡이고 경고 문구를 띄운다. 큰 위험(러시·보스)에는 화면 가장자리도 붉게. */
+function drawWarnings(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  const { fx, state } = scene;
+  const pulse = 0.5 + 0.5 * Math.sin(state.tick * 0.5);
+  fx.warnings.forEach((warning, index) => {
+    const fade = Math.min(1, (warning.life - warning.age) / 20);
+    if (warning.lane !== null) {
+      const near = -60 * PX;
+      const x0 = warning.lane * LANE_WIDTH;
+      const x1 = x0 + LANE_WIDTH;
+      const a = project(x0, FIELD.depth);
+      const b = project(x1, FIELD.depth);
+      const c = project(x1, near);
+      const d = project(x0, near);
+      ctx.fillStyle = `rgba(239, 68, 68, ${(0.12 + pulse * 0.2) * fade})`;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.lineTo(c.x, c.y);
+      ctx.lineTo(d.x, d.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.save();
+    ctx.globalAlpha = fade;
+    text(ctx, warning.text, VIEW.width / 2, 112 + index * 22, 15, pulse > 0.5 ? '#fecaca' : '#fca5a5');
+    ctx.restore();
+  });
+  if (fx.alarm > 0) {
+    const strength = Math.min(1, fx.alarm / 40) * (0.25 + pulse * 0.35);
+    const edge = 26;
+    ctx.fillStyle = `rgba(239, 68, 68, ${strength})`;
+    ctx.fillRect(0, 0, VIEW.width, edge);
+    ctx.fillRect(0, VIEW.height - edge, VIEW.width, edge);
+    ctx.fillRect(0, 0, edge, VIEW.height);
+    ctx.fillRect(VIEW.width - edge, 0, edge, VIEW.height);
+    if (state.bossActive && !state.enemies.some((e) => e.kind === 'boss' && e.z <= 34000)) {
+      text(ctx, WARN_BOSS, VIEW.width / 2, 140, 28, pulse > 0.5 ? '#fff' : '#fca5a5');
+    }
+  }
+}
+
 function drawBanner(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const banner = scene.fx.banner;
   if (!banner) {
@@ -480,7 +557,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
     }),
   );
   state.enemies.forEach((enemy) => drawables.push({ z: enemy.z, draw: () => (enemy.kind === 'boulder' ? drawBoulder(ctx, enemy) : drawActor(ctx, scene, enemy)) }));
-  state.dumbbells.forEach((d) => drawables.push({ z: d.z, draw: () => drawDumbbell(ctx, d.x, d.z, state.tick) }));
+  state.dumbbells.forEach((d) => drawables.push({ z: d.z, draw: () => (d.style === 'seed' ? drawSeed(ctx, d.x, d.z, state.tick) : drawDumbbell(ctx, d.x, d.z, state.tick)) }));
   state.bullets.forEach((bullet) =>
     drawables.push({
       z: bullet.z,
@@ -510,6 +587,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
   });
   ctx.globalAlpha = 1;
   drawHud(ctx, scene);
+  drawWarnings(ctx, scene);
   drawBanner(ctx, scene);
   ctx.restore();
   drawOverlay(ctx, scene);

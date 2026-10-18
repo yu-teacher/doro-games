@@ -1,6 +1,6 @@
 import { type EnemyKind, type GameEvent } from './engine';
 import { project } from './view';
-import { BOMB_QUIPS, BOSS_DOWN, INFINITE_LINES, INFINITE_TITLE, BOSS_INTRO, BOSS_NAME, BOSS_SHIELD, GATE_TITLES, gateValueText, isTrap, pick, quipFor } from './jokes';
+import { BOMB_QUIPS, BOSS_DOWN, WARN_SUB, WARN_TEXT, INFINITE_LINES, INFINITE_TITLE, BOSS_INTRO, BOSS_NAME, BOSS_SHIELD, GATE_TITLES, gateValueText, isTrap, pick, quipFor } from './jokes';
 
 /** 화면 효과(말풍선, 반짝임, 흔들림). 게임 규칙과 무관하고 엔진의 난수도 쓰지 않는다. 좌표는 px 이다. */
 
@@ -32,11 +32,22 @@ export interface Banner {
   life: number;
 }
 
+/** 곧 오는 위협의 경고: 해당 줄(null 이면 도로 전체)을 붉게 깜빡이고 문구를 띄운다. */
+export interface Warning {
+  lane: number | null;
+  text: string;
+  age: number;
+  life: number;
+}
+
 export interface Effects {
   texts: FloatText[];
   particles: Particle[];
   shake: number;
   banner: Banner | null;
+  warnings: Warning[];
+  /** 보스 접근 같은 큰 위험의 화면 경고(남은 틱) */
+  alarm: number;
 }
 
 export const COLORS = {
@@ -54,13 +65,15 @@ const GRAVITY = 0.12;
 
 const KIND_COLORS: Record<EnemyKind, string> = {
   grunt: '#94a3b8',
+  runner: '#f87171',
+  sniper: '#2dd4bf',
   brute: '#a78bfa',
   boulder: '#fb923c',
   boss: '#fb923c',
 };
 
 export function createEffects(): Effects {
-  return { texts: [], particles: [], shake: 0, banner: null };
+  return { texts: [], particles: [], shake: 0, banner: null, warnings: [], alarm: 0 };
 }
 
 function addText(fx: Effects, text: string, x: number, y: number, color: string, size = 15, life = 50): void {
@@ -134,6 +147,14 @@ export function applyEvent(fx: Effects, event: GameEvent, rnd: () => number): vo
         fx.banner = { title: `STAGE ${event.n}`, sub: '', age: 0, life: 70 };
       }
       break;
+    case 'warn': {
+      const sub = pick(WARN_SUB[event.label], pickIndex);
+      fx.warnings.push({ lane: event.lane, text: `${WARN_TEXT[event.label]}  ${sub}`, age: 0, life: 110 });
+      if (event.lane === null) {
+        fx.alarm = Math.max(fx.alarm, 90);
+      }
+      break;
+    }
     case 'infinite':
       fx.shake = 20;
       fx.banner = { title: INFINITE_TITLE, sub: pick(INFINITE_LINES, pickIndex), age: 0, life: 240 };
@@ -141,6 +162,7 @@ export function applyEvent(fx: Effects, event: GameEvent, rnd: () => number): vo
     case 'bossIntro':
       fx.shake = 14;
       // 무한 모드에 막 들어선 순간이면 그 배너를 지키고, 보스 등장은 흔들림으로만 알린다
+      fx.alarm = Math.max(fx.alarm, 150);
       if (fx.banner?.title === INFINITE_TITLE) {
         break;
       }
@@ -180,6 +202,13 @@ export function updateEffects(fx: Effects): void {
   fx.particles = fx.particles.filter((p) => p.age < p.life);
   if (fx.shake > 0) {
     fx.shake -= 1;
+  }
+  fx.warnings.forEach((w) => {
+    w.age += 1;
+  });
+  fx.warnings = fx.warnings.filter((w) => w.age < w.life);
+  if (fx.alarm > 0) {
+    fx.alarm -= 1;
   }
   if (fx.banner) {
     fx.banner.age += 1;

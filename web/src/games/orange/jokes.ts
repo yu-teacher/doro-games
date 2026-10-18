@@ -67,6 +67,18 @@ export const ITEM_QUIPS: Record<'orange' | 'chicken' | 'cash' | 'star' | 'pierce
 
 export const BOMB_QUIPS: readonly string[] = ['귤 폭탄 투하!', '펑! 귤즙', '과즙 폭발', '새콤달콤 폭격'];
 
+export const SNIPER_QUIPS: readonly string[] = ['저격수 컷!', '귤 씨는 이제 그만', '조준이 빗나갔다', '명사수도 귤 앞에선'];
+export const RUNNER_QUIPS: readonly string[] = ['쌩쌩 컷!', '너무 빨랐나', '줄줄이 쓰러진다'];
+
+/** 경고 문구: 곧 오는 위협을 미리 알려 준다(보스는 별도) */
+export const WARN_TEXT = { runner: '⚠ 돌진 도로롱!', rush: '⚠ 도로롱 러시!', sniper: '⚠ 저격 도로롱!' } as const;
+export const WARN_SUB: Record<'runner' | 'rush' | 'sniper', readonly string[]> = {
+  runner: ['한 줄로 달려와요', '줄을 바꿔요!', '빠르다 빨라'],
+  rush: ['엄청 많이 와요', '귤 도둑 대이동', '이건 좀 많은데'],
+  sniper: ['멀리서 쏴요', '귤 씨를 조심해요', '나를 노리고 있어요'],
+};
+export const WARN_BOSS = '⚠ WARNING';
+
 export const SHIELD_BREAK_QUIPS: readonly string[] = ['귤이 대신 맞았다!', '귤 터짐!', '한 번은 봐줄게'];
 
 export const INFINITE_TITLE = '∞ 무한 모드 돌입!';
@@ -125,6 +137,12 @@ export function quipFor(event: GameEvent, pickIndex: number): string | null {
       }
       if (event.kind === 'brute') {
         return pick(BRUTE_QUIPS, pickIndex);
+      }
+      if (event.kind === 'sniper') {
+        return pick(SNIPER_QUIPS, pickIndex);
+      }
+      if (event.kind === 'runner') {
+        return pickIndex % 4 === 0 ? pick(RUNNER_QUIPS, pickIndex) : null;
       }
       if (event.kind === 'boulder') {
         return pick(BOULDER_QUIPS, pickIndex);

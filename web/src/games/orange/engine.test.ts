@@ -57,7 +57,7 @@ function emptied(seed = 1, stage = 1): OrangeState {
 }
 
 function enemyAt(state: OrangeState, kind: EnemyKind, x: number, z: number, hp = 1, w = px(30)): Enemy {
-  const enemy: Enemy = { id: state.nextId++, kind, x, z, w, depth: px(20), hp, maxHp: hp, speed: 0, flash: 0, shielded: 0, born: state.tick, seed: 0 };
+  const enemy: Enemy = { id: state.nextId++, kind, x, z, w, depth: px(20), hp, maxHp: hp, speed: 0, flash: 0, shielded: 0, born: state.tick, seed: 0, vx: 0, minX: 0, maxX: FIELD.width, holdZ: 0 };
   state.enemies.push(enemy);
   return enemy;
 }
@@ -881,5 +881,38 @@ describe('무한 모드', () => {
     expect(speedOf(130)).toBeGreaterThan(speedOf(110));
     expect(speedOf(110)).toBeGreaterThan(speedOf(99));
     expect(speedOf(99)).toBe(speedOf(50));
+  });
+});
+
+describe('새 적: 저격수와 달리기', () => {
+  it('저격수는 자리를 잡은 뒤 간격마다 나를 향해 씨를 쏜다', () => {
+    const state = emptied(1, 30);
+    const sniper = enemyAt(state, 'sniper', px(180), px(500), 50);
+    sniper.holdZ = px(560);
+    sniper.born = state.tick;
+    sniper.speed = 0;
+    for (let i = 0; i < 120 && !state.dumbbells.some((d) => d.style === 'seed'); i += 1) {
+      step(state, { targetX: state.player.x });
+    }
+    expect(state.dumbbells.some((d) => d.style === 'seed')).toBe(true);
+  });
+
+  it('저격수는 자리를 잡기 전에는 쏘지 않는다', () => {
+    const state = emptied(1, 30);
+    const sniper = enemyAt(state, 'sniper', px(180), px(900), 50);
+    sniper.holdZ = px(560);
+    sniper.born = state.tick;
+    step(state, { targetX: state.player.x });
+    expect(state.dumbbells.length).toBe(0);
+  });
+
+  it('달리기 적은 같은 조건에서 졸개보다 빨리 내려온다', () => {
+    const state = emptied(1, 30);
+    const runner = enemyAt(state, 'runner', px(100), px(900));
+    runner.speed = px(2.4);
+    const grunt = enemyAt(state, 'grunt', px(260), px(900));
+    grunt.speed = px(1);
+    step(state, { targetX: state.player.x });
+    expect(runner.z).toBeLessThan(grunt.z);
   });
 });

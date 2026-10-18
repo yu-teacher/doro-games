@@ -82,7 +82,15 @@ const ENEMY = {
   brute: { w: px(38), depth: px(22), speed: px(0.4), points: 50 },
   boulder: { w: px(110), depth: px(46), speed: 0, points: 100 },
   boss: { w: px(150), depth: px(60), speed: px(1.2), points: 2000 },
+  /** 12스테이지부터: 한 줄로 빠르게 달려드는 도로롱. 도로롱을 따라붙지 않고 곧장 온다(줄을 바꿔 피한다). */
+  runner: { w: px(22), depth: px(14), speed: px(2.4), points: 15 },
+  /** 30스테이지부터: 멀리서 멈춰 서서 나를 향해 쏜다. 잡거나 피해야 한다. */
+  sniper: { w: px(32), depth: px(20), speed: px(0.8), points: 80 },
 } as const;
+
+const SNIPER = { holdZ: px(560), every: 110, shotSpeed: px(3.4), shotWidth: px(18) } as const;
+/** 새 위협이 나오기 시작하는 스테이지, 그리고 나올 확률(%) */
+const THREAT = { runnerFrom: 12, runnerPercent: 50, rushFrom: 18, rushPercent: 20, rollerFrom: 20, rollerPercent: 40, sniperFrom: 30, sniperPercent: 40 } as const;
 
 /**
  * 적의 체력은 "지금 내 실제 화력" 에서 정한다(곡선으로 미리 정하지 않는다). 내 화력이 자라는 만큼 부술 맛이 계속 이어지고,
@@ -116,6 +124,8 @@ const BOSS = {
 export const STAGE_BOSS_EVERY = STAGE.bossEvery;
 
 export type EnemyKind = keyof typeof ENEMY;
+/** 경고의 종류: 곧 오는 위협 */
+export type WarnLabel = 'runner' | 'rush' | 'sniper';
 export type ItemKind = keyof typeof ITEM_WEIGHTS;
 
 /** 게이트가 하는 일. + 와 × 는 총알 수, rate 는 연사, dmg 는 공격력. 마이너스 쪽(shotsDown, shotsHalf)은 함정이다. */
@@ -165,6 +175,13 @@ export interface Enemy {
   born: number;
   /** 기울어져 보이는 정도(그리기용 고정값) */
   seed: number;
+  /** 옆으로 움직이는 속도(굴러다니는 귤 덩어리). 0 이면 가만히 있다 */
+  vx: number;
+  /** 옆으로 움직일 수 있는 범위(자기 구역). 통로를 침범하지 않게 하려고 구역 안에서만 움직인다 */
+  minX: number;
+  maxX: number;
+  /** 이 깊이에 닿으면 멈춰 서서 쏜다(0 이면 그냥 다가온다) */
+  holdZ: number;
 }
 
 export interface Bullet {
@@ -185,6 +202,10 @@ export interface Dumbbell {
   x: number;
   z: number;
   vx: number;
+  /** 도로롱 쪽으로 날아오는 속도 */
+  vz: number;
+  /** 그리는 모양(보스는 덤벨, 쏘는 도로롱은 귤 씨) */
+  style: 'dumbbell' | 'seed';
 }
 
 export interface Item {
@@ -211,13 +232,18 @@ export interface Player {
 
 interface Spawn {
   at: number;
-  kind: EnemyKind | 'gate' | 'item' | 'crowd';
+  kind: EnemyKind | 'gate' | 'item' | 'crowd' | 'column' | 'warn';
   x: number;
   hp?: number;
   w?: number;
   count?: number;
   item?: ItemKind;
   gate?: { zones: GateZone[]; sway: number };
+  /** 경고: 어떤 위협이 곧 온다(lane 이 null 이면 도로 전체) */
+  lane?: number | null;
+  label?: WarnLabel;
+  /** 굴러다니는 귤 덩어리의 구역과 속도 */
+  roll?: { min: number; max: number; vx: number };
 }
 
 export type GameEvent =
@@ -228,6 +254,7 @@ export type GameEvent =
   | { t: 'shieldBreak'; x: number }
   | { t: 'stage'; n: number }
   | { t: 'infinite' }
+  | { t: 'warn'; label: WarnLabel; lane: number | null }
   | { t: 'bossIntro' }
   | { t: 'bossShield'; on: boolean }
   | { t: 'bossDown'; x: number; z: number }
@@ -542,7 +569,13 @@ function boulderBand(state: OrangeState, stage: number, at: number, hpFor: () =>
   return chosen.map(([first, lanes], i) => {
     const span = 1 + rand(state, Math.min(2, lanes));
     const start = first + rand(state, lanes - span + 1);
-    return { at: at + i * px(20), kind: 'boulder' as const, x: (start + span / 2) * LANE_WIDTH, hp: hpFor(), w: span * LANE_WIDTH - px(8) };
+    const w = span * LANE_WIDTH - px(8);
+    const min = first * LANE_WIDTH;
+    const max = (first + lanes) * LANE_WIDTH;
+    // 굴러다니는 귤 덩어리: 자기 구역 안에서만 왕복한다(통로는 침범하지 않는다). 구역에 움직일 여유가 있을 때만.
+    const rolls = stage >= THREAT.rollerFrom && max - min - w >= LANE_WIDTH && rand(state, 100) < THREAT.rollerPercent;
+    const roll = rolls ? { min, max, vx: (rand(state, 2) === 0 ? 1 : -1) * px(0.7) } : undefined;
+    return { at: at + i * px(20), kind: 'boulder' as const, x: (start + span / 2) * LANE_WIDTH, hp: hpFor(), w, roll };
   });
 }
 
@@ -563,8 +596,14 @@ function planNormalStage(state: OrangeState, stage: number): void {
   }
 
   // 몰려오는 무리: 전체 체력은 기준 화력의 약 3.5초치. 무한 모드에서는 수가 늘고(상한 있음) 더 빠르게 달려든다.
+  // 가끔 러시(두 배 가까운 수)가 오고, 오기 직전에 경고가 뜬다.
   const crowdMax = 28 + Math.min(INFINITE.extraCrowdCap, infiniteLevel(stage));
-  const count = Math.min(crowdMax, 3 + Math.floor((stage * 11) / 10) + rand(state, 3));
+  const rush = stage >= THREAT.rushFrom && rand(state, 100) < THREAT.rushPercent;
+  const baseCount = 3 + Math.floor((stage * 11) / 10) + rand(state, 3);
+  const count = Math.min(rush ? crowdMax * 2 : crowdMax, rush ? Math.floor(baseCount * 1.8) : baseCount);
+  if (rush) {
+    queue.push({ at: base + px(380), kind: 'warn', x: 0, lane: null, label: 'rush' });
+  }
   const crowdHp = Math.max(2, Math.floor((Math.floor((dps * 7 * HIT_EFFICIENCY_PERCENT) / 200) * challenge) / (100 * count)));
   queue.push({ at: base + px(480), kind: 'crowd', x: px(60) + rand(state, FIELD.width - px(120)), hp: crowdHp, count });
 
@@ -573,6 +612,19 @@ function planNormalStage(state: OrangeState, stage: number): void {
     for (let i = 0; i < bruteCount; i += 1) {
       queue.push({ at: base + px(600) + i * px(30), kind: 'brute', x: laneCenter(rand(state, LANE_COUNT)), hp: Math.max(4, Math.floor((Math.floor((dps * 3 * HIT_EFFICIENCY_PERCENT) / 100) * challenge) / 100)) });
     }
+  }
+  // 새 위협: 한 줄로 빠르게 달려드는 도로롱(12스테이지~), 멀리서 쏘는 도로롱(30스테이지~). 오기 전에 경고가 뜬다.
+  if (stage >= THREAT.runnerFrom && rand(state, 100) < THREAT.runnerPercent) {
+    const lane = rand(state, LANE_COUNT);
+    const runners = 3 + Math.min(4, Math.floor(stage / 20)) + rand(state, 2);
+    const total = Math.floor((Math.floor((dps * 12 * HIT_EFFICIENCY_PERCENT) / 1000) * challenge) / 100);
+    queue.push({ at: base + px(330), kind: 'warn', x: 0, lane, label: 'runner' });
+    queue.push({ at: base + px(400), kind: 'column', x: laneCenter(lane), hp: Math.max(1, Math.floor(total / runners)), count: runners });
+  }
+  if (stage >= THREAT.sniperFrom && rand(state, 100) < THREAT.sniperPercent) {
+    const lane = rand(state, LANE_COUNT);
+    queue.push({ at: base + px(450), kind: 'warn', x: 0, lane, label: 'sniper' });
+    queue.push({ at: base + px(520), kind: 'sniper', x: laneCenter(lane), hp: Math.max(8, Math.floor((Math.floor((dps * 4 * HIT_EFFICIENCY_PERCENT) / 100) * challenge) / 100)) });
   }
   if (stage % 3 === 0) {
     queue.push({ at: base + px(430), kind: 'item', x: px(60) + rand(state, FIELD.width - px(120)), item: 'orange' });
@@ -600,7 +652,7 @@ function startStage(state: OrangeState): void {
   planNormalStage(state, state.stage);
 }
 
-function newEnemy(state: OrangeState, kind: EnemyKind, x: number, z: number, hp: number, w?: number): Enemy {
+function newEnemy(state: OrangeState, kind: EnemyKind, x: number, z: number, hp: number, w?: number, options: { vx?: number; minX?: number; maxX?: number } = {}): Enemy {
   const base = ENEMY[kind];
   const enemy: Enemy = {
     id: takeId(state),
@@ -611,11 +663,15 @@ function newEnemy(state: OrangeState, kind: EnemyKind, x: number, z: number, hp:
     depth: base.depth,
     hp,
     maxHp: hp,
-    speed: base.speed + (kind === 'grunt' || kind === 'brute' ? crowdSpeedBonus(state.stage) : 0),
+    speed: base.speed + (kind === 'grunt' || kind === 'brute' || kind === 'runner' ? crowdSpeedBonus(state.stage) : 0),
     flash: 0,
     shielded: 0,
     born: state.tick,
     seed: rand(state, 1000),
+    vx: options.vx ?? 0,
+    minX: options.minX ?? 0,
+    maxX: options.maxX ?? FIELD.width,
+    holdZ: kind === 'sniper' ? SNIPER.holdZ : 0,
   };
   state.enemies.push(enemy);
   return enemy;
@@ -857,11 +913,47 @@ function moveEnemies(state: OrangeState, runSpeed: number): void {
     if (enemy.kind === 'boss') {
       continue;
     }
+    if (enemy.holdZ > 0 && enemy.z <= enemy.holdZ) {
+      // 쏘는 도로롱은 자리를 잡으면 세계가 다가와도 그 자리에 선다
+      enemy.z = enemy.holdZ;
+      continue;
+    }
     enemy.z -= runSpeed + enemy.speed;
     if (enemy.kind === 'grunt' || enemy.kind === 'brute') {
       // 도로롱 쪽으로 슬금슬금 몰려든다
       const dx = p.x - enemy.x;
       enemy.x += Math.max(-px(0.3), Math.min(px(0.3), Math.trunc(dx / 40)));
+    }
+    if (enemy.vx !== 0) {
+      // 굴러다니는 귤 덩어리: 자기 구역(minX~maxX) 안에서만 왕복한다
+      enemy.x += enemy.vx;
+      if (enemy.x - enemy.w / 2 <= enemy.minX) {
+        enemy.x = enemy.minX + enemy.w / 2;
+        enemy.vx = Math.abs(enemy.vx);
+      } else if (enemy.x + enemy.w / 2 >= enemy.maxX) {
+        enemy.x = enemy.maxX - enemy.w / 2;
+        enemy.vx = -Math.abs(enemy.vx);
+      }
+    }
+  }
+}
+
+/** 쏘는 도로롱: 자리를 잡으면 일정한 간격으로 나를 향해 귤 씨를 쏜다. */
+function updateSnipers(state: OrangeState): void {
+  for (const enemy of state.enemies) {
+    if (enemy.kind !== 'sniper' || enemy.z > enemy.holdZ) {
+      continue;
+    }
+    if ((state.tick - enemy.born) % SNIPER.every === 0) {
+      const ticksToReach = Math.max(1, Math.floor(enemy.z / SNIPER.shotSpeed));
+      state.dumbbells.push({
+        id: takeId(state),
+        x: enemy.x,
+        z: enemy.z,
+        vx: Math.trunc((state.player.x - enemy.x) / ticksToReach),
+        vz: SNIPER.shotSpeed,
+        style: 'seed',
+      });
     }
   }
 }
@@ -881,7 +973,7 @@ function updateBoss(state: OrangeState, boss: Enemy): void {
     for (let i = 0; i < volley; i += 1) {
       const aimX = state.player.x + (i === 0 ? 0 : px(60) * (rand(state, 2) === 0 ? -1 : 1));
       const ticksToReach = Math.max(1, Math.floor(boss.z / BOSS.dumbbellSpeed));
-      state.dumbbells.push({ id: takeId(state), x: boss.x, z: boss.z, vx: Math.trunc((aimX - boss.x) / ticksToReach) });
+      state.dumbbells.push({ id: takeId(state), x: boss.x, z: boss.z, vx: Math.trunc((aimX - boss.x) / ticksToReach), vz: BOSS.dumbbellSpeed, style: 'dumbbell' });
     }
   }
   if (phase2) {
@@ -924,11 +1016,11 @@ function moveDumbbells(state: OrangeState): void {
   const survivors: Dumbbell[] = [];
   for (const d of state.dumbbells) {
     d.x += d.vx;
-    d.z -= BOSS.dumbbellSpeed;
+    d.z -= d.vz;
     if (d.z < -px(30)) {
       continue;
     }
-    if (overlapZ(0, PLAYER.depth, d.z, px(14)) && overlapX(p.x, PLAYER.hitWidth, d.x, BOSS.dumbbellWidth)) {
+    if (overlapZ(0, PLAYER.depth, d.z, px(14)) && overlapX(p.x, PLAYER.hitWidth, d.x, d.style === 'seed' ? SNIPER.shotWidth : BOSS.dumbbellWidth)) {
       hitPlayer(state, 'shot');
       continue;
     }
@@ -991,6 +1083,17 @@ function runSpawns(state: OrangeState): void {
       case 'item':
         state.items.push({ id: takeId(state), kind: spawn.item ?? 'orange', x: spawn.x, z: FIELD.depth });
         break;
+      case 'warn':
+        state.events.push({ t: 'warn', label: spawn.label ?? 'runner', lane: spawn.lane ?? null });
+        break;
+      case 'column': {
+        // 한 줄로 늘어서 빠르게 달려드는 도로롱
+        const count = spawn.count ?? 1;
+        for (let i = 0; i < count; i += 1) {
+          newEnemy(state, 'runner', spawn.x + rand(state, px(12)) - px(6), FIELD.depth + i * px(36), spawn.hp ?? 1);
+        }
+        break;
+      }
       case 'crowd': {
         const count = spawn.count ?? 1;
         for (let i = 0; i < count; i += 1) {
@@ -1000,7 +1103,7 @@ function runSpawns(state: OrangeState): void {
         break;
       }
       default:
-        newEnemy(state, spawn.kind, spawn.x, FIELD.depth, spawn.hp ?? 1, spawn.w);
+        newEnemy(state, spawn.kind, spawn.x, FIELD.depth, spawn.hp ?? 1, spawn.w, spawn.roll ? { vx: spawn.roll.vx, minX: spawn.roll.min, maxX: spawn.roll.max } : {});
     }
   }
 }
@@ -1049,6 +1152,7 @@ export function step(state: OrangeState, input: OrangeInput): void {
   runSpawns(state);
   moveBullets(state);
   moveEnemies(state, runSpeed);
+  updateSnipers(state);
   if (boss) {
     updateBoss(state, boss);
   }
