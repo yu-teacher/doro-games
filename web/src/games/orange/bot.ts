@@ -1,4 +1,4 @@
-import { FIELD, FPS, PLAYER, firepower, gateBounds, nextUint, px, runSpeedFor, type Enemy, type GateEffect, type OrangeInput, type OrangeState } from './engine';
+import { SHOT_WIDTH, FIELD, FPS, PLAYER, firepower, gateBounds, nextUint, px, runSpeedFor, type Enemy, type GateEffect, type OrangeInput, type OrangeState } from './engine';
 
 /**
  * 규칙 점검용 봇(화면에는 쓰이지 않는다). 게이트의 이로운 쪽을 고르고, 다가오는 귤 덩어리·무리·덤벨을 피하고, 아이템을 줍고,
@@ -104,11 +104,12 @@ export function createBot(options: BotOptions = {}): (state: OrangeState) => Ora
       desired = distractedTo;
     }
 
+    // 게이트를 앞두고는 게이트 바로 뒤의 위험(귤 덩어리 줄 등)은 게이트를 지난 뒤에 피한다(사람도 먼저 칸을 먹고 옮긴다)
     const threats = [
       ...state.enemies.map((e) => ({ x: e.x, z: e.z, half: e.w / 2, depth: e.depth / 2 })),
       // 날아오는 덤벨은 지금 자리가 아니라 닿을 자리(궤도를 보고 예상한 곳)를 피한다
-      ...state.dumbbells.map((d) => ({ x: d.x + Math.trunc((d.vx * d.z) / Math.max(1, d.vz)), z: d.z, half: px(14), depth: px(10) })),
-    ].filter((t) => t.z - t.depth < lookAhead && t.z + t.depth > -px(10));
+      ...state.dumbbells.map((d) => ({ x: d.x + Math.trunc((d.vx * d.z) / Math.max(1, d.vz)), z: d.z, half: SHOT_WIDTH[d.style] / 2, depth: px(10) })),
+    ].filter((t) => t.z - t.depth < lookAhead && t.z + t.depth > -px(10) && t.z - t.depth < (gate ? gate.z + px(100) : Number.POSITIVE_INFINITY));
     // 지금 닿을 듯한 것들(깊이가 곧 겹치는 것)이 막고 있는 가로 구간. 그 구간을 가로질러 가면 부딪히므로,
     // 도로롱이 지금 서 있는 빈 구간 안에서만 움직인다(이미 막힌 구간 안이면 어디든 허용: 비상).
     const margin = PLAYER.hitWidth / 2 + px(6);

@@ -13,6 +13,7 @@ import {
   LANE_COUNT,
   LANE_WIDTH,
   STAGE_BOSS_EVERY,
+  type DumbbellStyle,
   type Enemy,
   type Gate,
   type ItemKind,
@@ -36,6 +37,8 @@ export interface Scene {
   tip: string;
   overLine: string;
   touch: boolean;
+  /** 고른 시작 캐릭터 번호(스프라이트 변형 hero[] 의 순서) */
+  hero: number;
 }
 
 const FONT = "system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif";
@@ -368,17 +371,44 @@ function drawSeed(ctx: CanvasRenderingContext2D, x: number, z: number, tick: num
   ctx.restore();
 }
 
-function drawDumbbell(ctx: CanvasRenderingContext2D, x: number, z: number, tick: number): void {
+function drawDumbbell(ctx: CanvasRenderingContext2D, x: number, z: number, tick: number, style: DumbbellStyle = 'dumbbell'): void {
   const at = project(x, z);
   const size = SIZE.dumbbell * at.scale;
   ctx.save();
   ctx.translate(at.x, at.y - size * 0.6);
-  ctx.rotate(tick * 0.2);
-  ctx.fillStyle = '#475569';
-  ctx.fillRect(-size * 0.1, -size * 0.5, size * 0.2, size);
-  ctx.fillStyle = '#1e293b';
-  ctx.fillRect(-size * 0.32, -size * 0.55, size * 0.64, size * 0.22);
-  ctx.fillRect(-size * 0.32, size * 0.33, size * 0.64, size * 0.22);
+  if (style === 'seal') {
+    // 어명 인장: 붉은 도장
+    ctx.rotate(Math.sin(tick * 0.1) * 0.2);
+    ctx.fillStyle = '#b91c1c';
+    ctx.fillRect(-size * 0.45, -size * 0.45, size * 0.9, size * 0.9);
+    ctx.fillStyle = '#fde047';
+    ctx.fillRect(-size * 0.28, -size * 0.1, size * 0.56, size * 0.2);
+    ctx.fillRect(-size * 0.1, -size * 0.28, size * 0.2, size * 0.56);
+  } else if (style === 'bullet') {
+    // 탐정의 총알: 길쭉한 황동 탄
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * 0.18, size * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#92400e';
+    ctx.fillRect(-size * 0.18, size * 0.2, size * 0.36, size * 0.14);
+  } else if (style === 'snow') {
+    // 펭귄의 눈덩이
+    ctx.fillStyle = '#e0f2fe';
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7dd3fc';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  } else {
+    ctx.rotate(tick * 0.2);
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(-size * 0.1, -size * 0.5, size * 0.2, size);
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(-size * 0.32, -size * 0.55, size * 0.64, size * 0.22);
+    ctx.fillRect(-size * 0.32, size * 0.33, size * 0.64, size * 0.22);
+  }
   ctx.restore();
 }
 
@@ -404,7 +434,8 @@ function drawPlayer(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.globalAlpha = 0.4;
   }
   const run = state.over ? 0 : Math.abs(Math.sin(state.tick * 0.35)) * 5;
-  sprite(ctx, scene.sprites, 'hero', at.x, at.y - SIZE.hero * 0.5 - run, SIZE.hero, SIZE.hero);
+  // 고른 시작 캐릭터(없으면 기본 그림, 그것도 없으면 도형)
+  sprite(ctx, scene.sprites, 'hero', at.x, at.y - SIZE.hero * 0.5 - run, SIZE.hero, SIZE.hero, variantOf(scene.sprites, 'hero', scene.hero));
   ctx.restore();
   for (let i = 0; i < p.shield; i += 1) {
     ctx.strokeStyle = i === 0 ? 'rgba(251, 146, 60, 0.95)' : 'rgba(253, 186, 116, 0.8)';
@@ -581,7 +612,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
     }),
   );
   state.enemies.forEach((enemy) => drawables.push({ z: enemy.z, draw: () => (enemy.kind === 'boulder' ? drawBoulder(ctx, enemy) : drawActor(ctx, scene, enemy)) }));
-  state.dumbbells.forEach((d) => drawables.push({ z: d.z, draw: () => (d.style === 'seed' ? drawSeed(ctx, d.x, d.z, state.tick) : drawDumbbell(ctx, d.x, d.z, state.tick)) }));
+  state.dumbbells.forEach((d) => drawables.push({ z: d.z, draw: () => (d.style === 'seed' ? drawSeed(ctx, d.x, d.z, state.tick) : drawDumbbell(ctx, d.x, d.z, state.tick, d.style)) }));
   state.bullets.forEach((bullet) =>
     drawables.push({
       z: bullet.z,

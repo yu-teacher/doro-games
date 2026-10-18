@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameComponentProps } from '../registry';
-import { loadSprites, type Sprites } from './assets';
+import { frameCount, loadSprites, type Sprites } from './assets';
 import { createAudio, tempoFor, type Audio, type MusicMood } from './audio';
 import { applyEvent, createEffects, updateEffects, type Effects } from './effects';
 import { FIELD, STEP_MS, createState, isInfinite, step, type OrangeState } from './engine';
 import { GAME_OVER_LINES, TIPS, pick } from './jokes';
+import { loadHero, saveHero } from './hero';
 import { drawScene, type Phase } from './render';
 import { VIEW } from './view';
 
@@ -30,6 +31,9 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
   const onGameOverRef = useRef(onGameOver);
   const audioRef = useRef<Audio | null>(null);
   const [sound, setSound] = useState({ muted: false, volume: 0.7 });
+  const [heroes, setHeroes] = useState<HTMLImageElement[]>([]);
+  const [hero, setHero] = useState(0);
+  const heroRef = useRef(0);
 
   useEffect(() => {
     bestRef.current = best;
@@ -69,6 +73,10 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
     void audio.loadVoices(ASSET_BASE, abort.signal);
     void loadSprites(ASSET_BASE, abort.signal).then((loaded) => {
       sprites = loaded;
+      const list = loaded.variants?.hero ?? [];
+      setHeroes(list);
+      heroRef.current = loadHero(list.length);
+      setHero(heroRef.current);
     });
 
     const moodOf = (): MusicMood => (isInfinite(state.stage) ? 'infinite' : state.bossActive ? 'boss' : 'run');
@@ -173,7 +181,7 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
       } else {
         updateEffects(fx);
       }
-      drawScene(ctx, { state, fx, sprites, phase, best: bestRef.current, tip, overLine, touch });
+      drawScene(ctx, { state, fx, sprites, phase, best: bestRef.current, tip, overLine, touch, hero: heroRef.current });
       frameId = requestAnimationFrame(frame);
     };
     frameId = requestAnimationFrame(frame);
@@ -214,6 +222,12 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
     setSound({ muted: audio.muted, volume: audio.volume });
   };
 
+  const chooseHero = (index: number) => {
+    heroRef.current = index;
+    setHero(index);
+    saveHero(index);
+  };
+
   return (
     <div className="mx-auto" style={{ width: `min(100%, calc(78vh * ${VIEW.width} / ${VIEW.height}))` }}>
       <canvas
@@ -222,6 +236,28 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
         className="block w-full touch-none select-none rounded-xl border border-slate-700 bg-slate-950"
         style={{ aspectRatio: `${VIEW.width} / ${VIEW.height}` }}
       />
+      {heroes.length > 1 && (
+        <div className="mt-2" role="radiogroup" aria-label="시작 캐릭터">
+          <p className="mb-1 text-xs text-slate-400">시작 캐릭터</p>
+          <div className="flex flex-wrap gap-1.5">
+            {heroes.map((image, index) => {
+              const frames = frameCount(image);
+              return (
+                <button
+                  key={image.src}
+                  type="button"
+                  role="radio"
+                  aria-checked={hero === index}
+                  aria-label={`캐릭터 ${index + 1}`}
+                  className={`h-12 w-12 rounded-lg border bg-slate-900 ${hero === index ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-slate-700'}`}
+                  style={{ backgroundImage: `url(${image.src})`, backgroundSize: `${frames * 100}% 100%`, backgroundPosition: 'left center', backgroundRepeat: 'no-repeat' }}
+                  onClick={() => chooseHero(index)}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-end gap-2 text-sm text-slate-300">
         <button
           type="button"

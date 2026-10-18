@@ -1,4 +1,4 @@
-import type { GameEvent, GateKind } from './engine';
+import { isTrapKind, type GameEvent, type GateKind } from './engine';
 
 /**
  * 개그 대사 모음. 대사를 코드에 흩뿌리지 않고 여기 한 곳에 모아서, 추가하기 쉽게 한다.
@@ -48,7 +48,7 @@ export function gateValueText(kind: GateKind, value: number): string {
 }
 
 export function isTrap(kind: GateKind): boolean {
-  return kind === 'shotsDown' || kind === 'shotsHalf' || kind === 'dmgDown' || kind === 'rateDown';
+  return isTrapKind(kind);
 }
 
 /** 적을 쓰러뜨릴 때 떠오르는 짧은 말 */

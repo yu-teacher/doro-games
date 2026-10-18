@@ -128,21 +128,31 @@ describe('반응 여유: 빨라져도 사람이 피할 수 있다', () => {
     }
   });
 
-  it('보스가 던진 덤벨이 닿기까지의 시간도 충분하다', () => {
-    const state = createState(3);
-    state.queue = [];
-    state.stage = 9;
-    state.player.star = Number.MAX_SAFE_INTEGER;
-    state.distance = state.stageStart + px(900);
-    let flight = 0;
-    for (let i = 0; i < 1200 && flight === 0; i += 1) {
-      step(state, { targetX: state.player.x });
-      const d = state.dumbbells[0];
-      if (d) {
-        flight = Math.floor(d.z / d.vz);
+  it('보스 네 명의 공격(덤벨·인장·총알·눈덩이)이 닿기까지의 시간도 모두 충분하다', () => {
+    const styles = new Set<string>();
+    for (const bossStage of [10, 20, 30, 40]) {
+      for (const phase2 of [false, true]) {
+        const state = createState(3);
+        state.queue = [];
+        state.stage = bossStage - 1;
+        state.player.star = Number.MAX_SAFE_INTEGER;
+        state.distance = state.stageStart + px(900);
+        const seen = new Set<number>();
+        for (let i = 0; i < 900; i += 1) {
+          step(state, { targetX: state.player.x });
+          const boss = state.enemies.find((e) => e.kind === 'boss');
+          if (boss && phase2) {
+            boss.hp = Math.floor(boss.maxHp / 3);
+          }
+          for (const d of state.dumbbells.filter((x) => !seen.has(x.id))) {
+            seen.add(d.id);
+            styles.add(d.style);
+            expect(Math.floor(d.z / d.vz), `boss ${bossStage} ${d.style}`).toBeGreaterThanOrEqual(NEEDED);
+          }
+        }
       }
     }
-    expect(flight).toBeGreaterThanOrEqual(NEEDED);
+    expect([...styles].sort()).toEqual(['bullet', 'dumbbell', 'seal', 'snow']);
   });
 
   it('저격수가 쏜 씨앗이 닿기까지의 시간도 충분하다', () => {

@@ -58,21 +58,12 @@ const RUN = { base: px(1.76) } as const;
  * 속도는 10스테이지(보스를 잡을 때)마다 한 단계씩 빨라지고, 무한 모드(100~)부터는 레벨마다 일정한 비율로 곱해져 지수로 빨라진다.
  * 사람이 반응할 수 있는 한계(반응 시간 + 줄을 옮기는 시간)를 넘지 않도록 상한이 있다(engine.test 의 "반응 여유" 로 확인).
  */
-const SPEED = { tierEvery: 10, tierPercent: 6, maxTier: 9, infiniteGrowthPermille: 1015, maxPercent: 400 } as const;
+const SPEED = { tierEvery: 10, tierPercent: 8, maxTier: 9, infiniteGrowthPermille: 1015, maxPercent: 400 } as const;
 
 const STAGE = {
   length: px(900),
   bossEvery: 10,
   afterBoss: 150,
-} as const;
-
-const GATE = {
-  depth: px(24),
-  /** 총알을 이 횟수만큼 맞을 때마다 + 계열 값이 1 오른다(총알 수는 빨리, 공격력·연사는 느리게) */
-  hitsPerStepShots: 30,
-  hitsPerStepOther: 40,
-  /** 쏴서 키울 수 있는 최대 증가량(원래 값 기준). 접근하는 내내 겨눠서 쏴야 닿는 정도 */
-  maxGain: 3,
 } as const;
 
 const ITEM = { width: px(26), dropBoulder: 30, dropBrute: 25, dropGrunt: 3 } as const;
@@ -109,7 +100,7 @@ const CHALLENGE = { startPercent: 44, perStage: 1, maxPercent: 62 } as const;
  */
 const HIT_EFFICIENCY_PERCENT = 32;
 /** 적 체력의 기준: "이 스테이지의 한계 화력" 의 이 비율(%). 한계의 이만큼을 가진 사람이 도전 배율대로 부술 수 있도록 맞춘다. */
-const ANCHOR_PERCENT = 46;
+const ANCHOR_PERCENT = 47;
 /** 무한 모드: 스테이지가 하나 오를 때마다(레벨) 늘어나는 양. 레벨에는 상한이 있어 모든 수치가 안전한 정수 안에 머문다. */
 const INFINITE = { levelCap: 300, challengePerLevel: 3, bossPercentPerLevel: 4, extraCrowdCap: 40 } as const;
 
@@ -123,7 +114,7 @@ const BOSS = {
   shieldEvery: 420,
   shieldTicks: 120,
   killBonus: 1000,
-  seconds: 18,
+  seconds: 13,
   growthPercent: 8,
 } as const;
 
@@ -140,10 +131,6 @@ export type GateKind = 'shotsUp' | 'shotsMul' | 'rateUp' | 'dmgUp' | 'shotsDown'
 export interface GateEffect {
   kind: GateKind;
   value: number;
-  /** 게이트가 만들어졌을 때의 값(키울 수 있는 한도를 정하는 기준) */
-  start: number;
-  /** 지금까지 맞은 총알 수 */
-  hits: number;
 }
 
 /** 게이트의 한 칸. 줄 단위로 나뉘며(좋은 칸은 좁고 나쁜 칸은 넓다), hidden 이면 들어가기 전까지 효과를 알 수 없다. */
@@ -199,9 +186,13 @@ export interface Bullet {
   /** 더 뚫을 수 있는 적의 수 */
   pierce: number;
   /** 마지막으로 값을 키워 준 게이트와 마지막으로 때린 적(같은 대상을 두 번 세지 않으려고) */
-  gateId: number;
   lastHit: number;
 }
+
+export type DumbbellStyle = 'dumbbell' | 'seed' | 'seal' | 'bullet' | 'snow';
+
+/** 날아오는 것의 충돌 폭 */
+export const SHOT_WIDTH: Record<DumbbellStyle, number> = { dumbbell: px(24), seed: px(18), seal: px(24), bullet: px(14), snow: LANE_WIDTH - px(10) };
 
 export interface Dumbbell {
   id: number;
@@ -210,8 +201,8 @@ export interface Dumbbell {
   vx: number;
   /** 도로롱 쪽으로 날아오는 속도 */
   vz: number;
-  /** 그리는 모양(보스는 덤벨, 쏘는 도로롱은 귤 씨) */
-  style: 'dumbbell' | 'seed';
+  /** 그리는 모양과 충돌 폭: 근육은 덤벨, 폐하는 어명(인장), 탐정은 총알, 펭귄은 눈덩이, 쏘는 도로롱은 귤 씨 */
+  style: DumbbellStyle;
 }
 
 export interface Item {
@@ -466,8 +457,13 @@ export function createState(seed: number): OrangeState {
   return state;
 }
 
+/** 함정(빨강) 종류인가. 화면 문구(jokes.isTrap)도 이 규칙을 쓴다. */
+export function isTrapKind(kind: GateKind): boolean {
+  return kind === 'shotsDown' || kind === 'shotsHalf' || kind === 'dmgDown' || kind === 'rateDown';
+}
+
 export function effect(kind: GateKind, value: number): GateEffect {
-  return { kind, value, start: value, hits: 0 };
+  return { kind, value };
 }
 
 function goodGate(state: OrangeState, stage: number): GateEffect {
@@ -512,35 +508,42 @@ const GATE_LAYOUTS = {
 } as const;
 
 const SWAY = { minWidth: px(30), extraWidth: px(30), period: 240, fromStage: 15, percent: 30 } as const;
-const MYSTERY = { fromStage: 8, percent: 20, goodPercent: 65 } as const;
+const MYSTERY = { fromStage: 8, percent: 20, goodPercent: 50 } as const;
+/** 이어지는 두 줄의 통로 사이 최대 이동(줄). 사람이 반응하고 옮길 시간이 남도록 제한한다. */
+const BAND_SHIFT_LANES = 2;
 const TRIPLE_FROM_STAGE = 12;
 const FIVE_FROM_STAGE = 25;
 
 /**
  * 게이트 한 줄. 좋은 칸(+)은 1~2줄로 좁고 나쁜 칸(−)은 3~4줄로 넓다. 후반에는 3분할·5분할, 흔들리는 경계, 가려진 칸(?)이 섞인다.
- * 이로운 칸은 언제나 정확히 하나 있다(가려진 칸이 이롭다고 보장되지는 않는다).
+ * 보이는 칸에는 파랑(이로움)과 빨강(함정)이 반드시 섞여 있고, 가려진 칸(?)만 언제나 무작위다.
  */
 function planGate(state: OrangeState, stage: number): { zones: GateZone[]; sway: number } {
   const layoutRoll = rand(state, 100);
   const options = stage >= FIVE_FROM_STAGE && layoutRoll < 25 ? GATE_LAYOUTS.five : stage >= TRIPLE_FROM_STAGE && layoutRoll < 60 ? GATE_LAYOUTS.triple : GATE_LAYOUTS.pair;
   const sizes = options[rand(state, options.length)] as readonly number[];
 
+    // 역할: 좁은 칸 하나가 이로운(파랑) 칸, 나머지는 모두 나쁜(빨강) 칸이다. 파랑만 있거나 빨강만 있는 게이트는 만들지 않는다.
   const narrow = sizes.map((size, i) => (size <= 2 ? i : -1)).filter((i) => i >= 0);
   const goodIndex = narrow[rand(state, narrow.length)];
-  const effects = sizes.map((_, i) => {
-    if (i === goodIndex) {
-      return goodGate(state, stage);
-    }
-    // 초반에는 둘 다 쓸 만하게, 갈수록 나머지 칸은 거의 다 나쁜 칸이다
-    const goodChance = stage <= 2 ? 100 : stage < 6 ? 40 : 10;
-    return rand(state, 100) < goodChance ? goodGate(state, stage) : badGate(state, stage);
-  });
+  const effects = sizes.map((_, i) => (i === goodIndex ? goodGate(state, stage) : badGate(state, stage)));
 
+  // 가려진 칸(?)은 위의 역할과 상관없이 언제나 무작위다(이로울 수도, 나쁠 수도 있다)
   const hidden = sizes.map(() => false);
   if (stage >= MYSTERY.fromStage && rand(state, 100) < MYSTERY.percent) {
     const index = rand(state, sizes.length);
     hidden[index] = true;
     effects[index] = rand(state, 100) < MYSTERY.goodPercent ? goodGate(state, stage) : badGate(state, stage);
+  }
+  // 보이는 칸에는 파랑이 반드시 하나 있고, 보이는 칸이 둘 이상이면 빨강도 있어야 한다(파랑만·빨강만 있는 게이트는 없다).
+  // 가려진 칸이 무작위로 바뀐 결과 이 규칙이 깨지면 보이는 칸 하나를 뒤집어 맞춘다.
+  const visible = sizes.map((_, i) => i).filter((i) => !hidden[i]);
+  const isGood = (i: number): boolean => !isTrapKind(effects[i].kind);
+  if (!visible.some(isGood)) {
+    const flip = visible.find((i) => sizes[i] <= 2) ?? visible[0];
+    effects[flip] = goodGate(state, stage);
+  } else if (visible.length >= 2 && visible.every(isGood)) {
+    effects[visible[rand(state, visible.length)]] = badGate(state, stage);
   }
 
   let lane = 0;
@@ -577,29 +580,64 @@ export function gateZoneAt(gate: Gate, tick: number, x: number): GateZone {
   return gate.zones[index < 0 ? gate.zones.length - 1 : index];
 }
 
-/** 한 줄(band)에서 귤 덩어리가 막는 줄과, 반드시 비워 두는 통로 줄(연속 2줄). */
-function boulderBand(state: OrangeState, stage: number, at: number, hpFor: () => number): Spawn[] {
-  const corridorStart = rand(state, LANE_COUNT - 1);
+/** 이 스테이지의 한 줄(band)에서 귤 덩어리가 막는 줄 수: 처음엔 1줄, 점점 늘다가 50스테이지부터는 언제나 4줄(통로는 1줄만 남는다). */
+export function blockedLanes(state: OrangeState, stage: number): number {
+  if (stage < 6) {
+    return 1;
+  }
+  if (stage < 15) {
+    return 2;
+  }
+  if (stage < 30) {
+    return 3;
+  }
+  if (stage < 50) {
+    return 3 + rand(state, 2);
+  }
+  return LANE_COUNT - 1;
+}
+
+/**
+ * 한 줄(band)에서 귤 덩어리가 막는 줄과, 반드시 비워 두는 통로(연속된 빈 줄, 최소 1줄).
+ * 통로는 `near` 가 있으면 그 통로에서 두 줄 안쪽으로만 옮겨 간다(앞 줄의 통로에서 다음 통로까지 사람이 옮겨 갈 시간을 보장한다).
+ * 통로 밖은 빈틈없이 막고, 막는 줄 수 = LANE_COUNT − 통로 줄 수.
+ */
+function boulderBand(state: OrangeState, stage: number, at: number, hpFor: () => number, near?: { start: number; lanes: number }): { spawns: Spawn[]; corridor: { start: number; lanes: number } } {
+  const free = LANE_COUNT - blockedLanes(state, stage);
+  let candidates = Array.from({ length: LANE_COUNT - free + 1 }, (_, i) => i);
+  if (near) {
+    const close = candidates.filter((i) => Math.abs(i - near.start) <= BAND_SHIFT_LANES);
+    if (close.length > 0) {
+      candidates = close;
+    }
+  }
+  const corridorStart = candidates[rand(state, candidates.length)];
   const regions: [number, number][] = [];
   if (corridorStart > 0) {
     regions.push([0, corridorStart]);
   }
-  if (corridorStart + 2 < LANE_COUNT) {
-    regions.push([corridorStart + 2, LANE_COUNT - corridorStart - 2]);
+  if (corridorStart + free < LANE_COUNT) {
+    regions.push([corridorStart + free, LANE_COUNT - corridorStart - free]);
   }
-  const wanted = 1 + (rand(state, 100) < 45 ? 1 : 0);
-  const chosen = wanted >= regions.length ? regions : [regions[rand(state, regions.length)]];
-  return chosen.map(([first, lanes], i) => {
-    const span = 1 + rand(state, Math.min(2, lanes));
-    const start = first + rand(state, lanes - span + 1);
-    const w = span * LANE_WIDTH - px(8);
+  const spawns: Spawn[] = [];
+  regions.forEach(([first, lanes], i) => {
     const min = first * LANE_WIDTH;
     const max = (first + lanes) * LANE_WIDTH;
-    // 굴러다니는 귤 덩어리: 자기 구역 안에서만 왕복한다(통로는 침범하지 않는다). 구역에 움직일 여유가 있을 때만.
-    const rolls = stage >= THREAT.rollerFrom && max - min - w >= LANE_WIDTH && rand(state, 100) < THREAT.rollerPercent;
-    const roll = rolls ? { min, max, vx: (rand(state, 2) === 0 ? 1 : -1) * px(0.7) } : undefined;
-    return { at: at + i * px(20), kind: 'boulder' as const, x: (start + span / 2) * LANE_WIDTH, hp: hpFor(), w, roll };
+    // 굴러다니는 귤 덩어리: 한 줄 폭으로 자기 구역 안에서만 왕복해 구역 전체를 훑는다(통로는 침범하지 않는다)
+    if (stage >= THREAT.rollerFrom && lanes >= 2 && lanes <= 3 && rand(state, 100) < THREAT.rollerPercent) {
+      const w = LANE_WIDTH - px(8);
+      spawns.push({ at: at + i * px(20), kind: 'boulder', x: min + LANE_WIDTH / 2, hp: hpFor(), w, roll: { min, max, vx: (rand(state, 2) === 0 ? 1 : -1) * px(0.7) } });
+      return;
+    }
+    // 그 밖에는 구역을 빈틈없이 덮는다(한 덩어리가 최대 두 줄)
+    let lane = first;
+    while (lane < first + lanes) {
+      const span = Math.min(first + lanes - lane, 1 + rand(state, 2));
+      spawns.push({ at: at + i * px(20), kind: 'boulder', x: (lane + span / 2) * LANE_WIDTH, hp: hpFor(), w: span * LANE_WIDTH - px(8) });
+      lane += span;
+    }
   });
+  return { spawns, corridor: { start: corridorStart, lanes: free } };
 }
 
 function planNormalStage(state: OrangeState, stage: number): void {
@@ -611,11 +649,13 @@ function planNormalStage(state: OrangeState, stage: number): void {
   const queue: Spawn[] = [];
   queue.push({ at: base + px(60), kind: 'gate', x: 0, gate: planGate(state, stage) });
 
-  // 거대 귤 덩어리: 체력 숫자가 "내 화력으로 부술 수 있나" 를 알려 준다. 길은 언제나 연속 2줄 이상 비어 있어 움직임만으로 피할 수 있다.
+  // 거대 귤 덩어리: 체력 숫자가 "내 화력으로 부술 수 있나" 를 알려 준다. 처음엔 한두 줄만 막다가 50스테이지부터는 언제나 네 줄을 막지만, 통로가 반드시 남아 움직임만으로 피할 수 있다.
   const boulderHp = (): number => Math.max(10, Math.floor((window * challenge * (60 + rand(state, 80))) / 10000));
-  queue.push(...boulderBand(state, stage, base + px(240), boulderHp));
+  const first = boulderBand(state, stage, base + px(300), boulderHp);
+  queue.push(...first.spawns);
   if (stage >= 8 && rand(state, 100) < 35) {
-    queue.push(...boulderBand(state, stage, base + px(520), boulderHp));
+    // 두 번째 줄은 덩치 적(+600)보다 뒤에 둔다: 통로 안에서 덩치 적과 귤 덩어리 사이에 갇히지 않게 한다
+    queue.push(...boulderBand(state, stage, base + px(760), boulderHp, first.corridor).spawns);
   }
 
   // 몰려오는 무리: 전체 체력은 기준 화력의 약 3.5초치. 무한 모드에서는 수가 늘고(상한 있음) 더 빠르게 달려든다.
@@ -808,18 +848,6 @@ function applyGate(state: OrangeState, gate: Gate, chosen: GateEffect): void {
   state.events.push({ t: 'gate', kind: chosen.kind, value: v, x: p.x });
 }
 
-/** 총알이 지나간 게이트는 이로운 + 계열 값이 조금씩 올라간다(쏠수록 커진다, 한도 있음). 배수(×)와 함정은 변하지 않는다. */
-function growGate(hit: GateEffect): void {
-  hit.hits += 1;
-  const shots = hit.kind === 'shotsUp';
-  if (!shots && hit.kind !== 'dmgUp' && hit.kind !== 'rateUp') {
-    return;
-  }
-  if (hit.hits % (shots ? GATE.hitsPerStepShots : GATE.hitsPerStepOther) === 0) {
-    hit.value = Math.min(hit.start + GATE.maxGain, hit.value + 1);
-  }
-}
-
 function collect(state: OrangeState, item: Item): void {
   const p = state.player;
   switch (item.kind) {
@@ -878,7 +906,6 @@ function fire(state: OrangeState): void {
       vx: Math.trunc((centered * BULLET.fanStep) / 2),
       damage: p.damage,
       pierce: p.pierce > 0 ? BULLET.pierceHits : 0,
-      gateId: 0,
       lastHit: 0,
     });
   }
@@ -893,14 +920,7 @@ function moveBullets(state: OrangeState): void {
     if (bullet.z > FIELD.depth || bullet.x < -px(20) || bullet.x > FIELD.width + px(20)) {
       continue;
     }
-    // 게이트: 총알은 그대로 통과하고, 지나가며 이로운 쪽 값을 키운다(총알마다 게이트당 한 번)
-    for (const gate of state.gates) {
-      if (!gate.used && bullet.gateId !== gate.id && overlapZ(bullet.z, BULLET.depth, gate.z, GATE.depth)) {
-        growGate(gateZoneAt(gate, state.tick, bullet.x).effect);
-        bullet.gateId = gate.id;
-        break;
-      }
-    }
+    // 게이트: 총알은 그대로 통과한다(쏜다고 게이트 값이 바뀌지 않는다)
     // 적: 가장 가까운(z 가 작은) 한 마리에게 피해를 준다
     let target: Enemy | null = null;
     for (const enemy of state.enemies) {
@@ -982,6 +1002,54 @@ function updateSnipers(state: OrangeState): void {
   }
 }
 
+/**
+ * 보스마다 공격이 다르다(모습·이름과 같은 순서: 근육 → 폐하 → 탐정 → 펭귄, 이후 반복).
+ *  - 근육: 덤벨을 나를 향해 던진다(2페이즈에는 두 개).
+ *  - 폐하: 어명 인장이 부채꼴로 퍼져 온다(3개, 2페이즈 5개). 부채꼴 밖으로 피한다.
+ *  - 탐정: 빠른 총알을 연달아 쏜다(내 위치를 따라 겨눈다). 계속 움직여야 한다.
+ *  - 펭귄: 눈덩이 줄이 한 줄 빼고 도로를 가로막는다. 빈 줄로 들어간다.
+ * 모두 사람이 반응하고 옮길 시간이 남도록 속도를 정했다(realism.test 의 "반응 여유").
+ */
+function bossAttack(state: OrangeState, boss: Enemy, age: number, phase2: boolean): void {
+  const index = Math.max(1, Math.floor(state.stage / STAGE.bossEvery));
+  const concept = (index - 1) % 4;
+  const aim = (z: number, speed: number, targetX: number, style: DumbbellStyle): void => {
+    const ticksToReach = Math.max(1, Math.floor(z / speed));
+    state.dumbbells.push({ id: takeId(state), x: boss.x, z, vx: Math.trunc((targetX - boss.x) / ticksToReach), vz: speed, style });
+  };
+  if (concept === 0) {
+    if (age % (phase2 ? BOSS.throwEveryPhase2 : BOSS.throwEvery) === 0) {
+      for (let i = 0; i < (phase2 ? 2 : 1); i += 1) {
+        const aimX = state.player.x + (i === 0 ? 0 : px(60) * (rand(state, 2) === 0 ? -1 : 1));
+        aim(boss.z, BOSS.dumbbellSpeed, aimX, 'dumbbell');
+      }
+    }
+  } else if (concept === 1) {
+    if (age % (phase2 ? 70 : 100) === 0) {
+      const offsets = phase2 ? [-2, -1, 0, 1, 2] : [-1, 0, 1];
+      offsets.forEach((o) => aim(boss.z, px(3.8), state.player.x + o * px(55), 'seal'));
+    }
+  } else if (concept === 2) {
+    const every = phase2 ? 100 : 130;
+    const shots = phase2 ? 4 : 3;
+    const into = age % every;
+    if (into % 14 === 0 && into / 14 < shots) {
+      aim(boss.z, px(5.2), state.player.x, 'bullet');
+    }
+  } else if (age % (phase2 ? 90 : 120) === 0) {
+    // 빈 줄은 앞 줄의 빈 줄에서 두 줄 안쪽(옮겨 갈 시간 보장). 직전 빈 줄은 보스의 vx 칸에 적어 둔다(보스는 가로 속도를 따로 쓰지 않는다)
+    const previous = boss.vx;
+    const choices = Array.from({ length: LANE_COUNT }, (_, i) => i).filter((i) => Math.abs(i - previous) <= BAND_SHIFT_LANES);
+    const gap = choices[rand(state, choices.length)];
+    boss.vx = gap;
+    for (let lane = 0; lane < LANE_COUNT; lane += 1) {
+      if (lane !== gap) {
+        state.dumbbells.push({ id: takeId(state), x: laneCenter(lane), z: boss.z, vx: 0, vz: px(3.6), style: 'snow' });
+      }
+    }
+  }
+}
+
 function updateBoss(state: OrangeState, boss: Enemy): void {
   const age = state.tick - boss.born;
   if (boss.z > BOSS.holdZ) {
@@ -991,15 +1059,7 @@ function updateBoss(state: OrangeState, boss: Enemy): void {
   const direction = (Math.floor(age / 150) % 2 === 0 ? 1 : -1) * BOSS.moveSpeed;
   boss.x = Math.min(FIELD.width - boss.w / 2, Math.max(boss.w / 2, boss.x + direction));
   const phase2 = boss.hp * 2 < boss.maxHp;
-  const every = phase2 ? BOSS.throwEveryPhase2 : BOSS.throwEvery;
-  if (age % every === 0) {
-    const volley = phase2 ? 2 : 1;
-    for (let i = 0; i < volley; i += 1) {
-      const aimX = state.player.x + (i === 0 ? 0 : px(60) * (rand(state, 2) === 0 ? -1 : 1));
-      const ticksToReach = Math.max(1, Math.floor(boss.z / BOSS.dumbbellSpeed));
-      state.dumbbells.push({ id: takeId(state), x: boss.x, z: boss.z, vx: Math.trunc((aimX - boss.x) / ticksToReach), vz: BOSS.dumbbellSpeed, style: 'dumbbell' });
-    }
-  }
+  bossAttack(state, boss, age, phase2);
   if (phase2) {
     if (boss.shielded > 0) {
       boss.shielded -= 1;
@@ -1044,7 +1104,7 @@ function moveDumbbells(state: OrangeState): void {
     if (d.z < -px(30)) {
       continue;
     }
-    if (overlapZ(0, PLAYER.depth, d.z, px(14)) && overlapX(p.x, PLAYER.hitWidth, d.x, d.style === 'seed' ? SNIPER.shotWidth : BOSS.dumbbellWidth)) {
+    if (overlapZ(0, PLAYER.depth, d.z, px(14)) && overlapX(p.x, PLAYER.hitWidth, d.x, SHOT_WIDTH[d.style])) {
       hitPlayer(state, 'shot');
       continue;
     }

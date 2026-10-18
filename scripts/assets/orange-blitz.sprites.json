@@ -206,6 +206,69 @@
         "cutout": "rembg",
         "height": 300
       }
+    ],
+    "hero": [
+      {
+        "src": "costumes/costumes-018-cowboy-gun.png",
+        "cutout": "rembg",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-004-hardhat.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-002-hanbok.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-033-bunny-onesie.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-025.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-009.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-030.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-032-dino-onesie.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-022-shark-suit.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-013-watermelon-helmet.jpg",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-026-chicken-suit.png",
+        "cutout": "adaptive",
+        "height": 128
+      },
+      {
+        "src": "costumes/costumes-029-maid-broom.gif",
+        "cutout": "rembg",
+        "height": 128,
+        "frames": 8
+      }
     ]
   }
 }

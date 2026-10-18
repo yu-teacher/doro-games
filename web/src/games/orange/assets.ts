@@ -9,9 +9,9 @@ export type SpriteKey = 'hero' | 'swarm' | 'slime' | 'runner' | 'sniper' | 'boss
 export const SPRITE_KEYS: readonly SpriteKey[] = ['hero', 'swarm', 'slime', 'runner', 'sniper', 'boss', 'orange', 'chicken', 'cash', 'star', 'pierce', 'bomb', 'bg'];
 
 /** 같은 역할의 그림 여러 장을 가진 키(배경 띠, 졸개·덩치 의상, 보스 모습) */
-export type VariantKey = 'bg' | 'grunt' | 'brute' | 'boss';
+export type VariantKey = 'bg' | 'grunt' | 'brute' | 'boss' | 'hero';
 
-export const VARIANT_KEYS: readonly VariantKey[] = ['bg', 'grunt', 'brute', 'boss'];
+export const VARIANT_KEYS: readonly VariantKey[] = ['bg', 'grunt', 'brute', 'boss', 'hero'];
 
 interface SpriteMeta {
   file: string;

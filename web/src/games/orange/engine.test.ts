@@ -22,6 +22,7 @@ import {
   infiniteLevel,
   intervalFloor,
   isInfinite,
+  isTrapKind,
   nextUint,
   px,
   runSpeedFor,
@@ -299,9 +300,9 @@ describe('스테이지 스폰', () => {
     expect(kinds.has('grunt')).toBe(true);
     const boulder = state.enemies.find((e) => e.kind === 'boulder');
     if (boulder) {
-      // 스테이지 1: 내 화력 45 × 접근 시간 11초 × 도전 배율 41% × 적중 계수 32% × (60~140%)
-      expect(boulder.maxHp).toBeGreaterThanOrEqual(35);
-      expect(boulder.maxHp).toBeLessThanOrEqual(95);
+      // 스테이지 1: 기준 화력 55 × 접근 시간 11초 × 도전 배율 45% × 적중 계수 32% × (60~140%)
+      expect(boulder.maxHp).toBeGreaterThanOrEqual(45);
+      expect(boulder.maxHp).toBeLessThanOrEqual(125);
     }
   });
 
@@ -443,7 +444,7 @@ describe('게이트', () => {
     }
   });
 
-  it('총알은 게이트를 통과해 뒤의 적을 맞히고, 총알 하나는 게이트를 한 번만 센다', () => {
+  it('총알은 게이트를 통과해 뒤의 적을 맞히고, 쏴도 게이트 값은 변하지 않는다', () => {
     const state = emptied(1, 40);
     state.player.x = px(40);
     state.player.shots = 1;
@@ -451,22 +452,62 @@ describe('게이트', () => {
     const gate = gateAt(state, px(300), effect('shotsUp', 2), effect('dmgUp', 1));
     const enemy = enemyAt(state, 'grunt', px(40), px(600), 99);
     play(state, 80, () => ({ targetX: px(40) }));
-    expect(gate.zones[0].effect.hits).toBe(1);
-    expect(gate.zones[1].effect.hits).toBe(0);
+    expect(gate.zones[0].effect.value).toBe(2);
+    expect(gate.zones[1].effect.value).toBe(1);
     expect(enemy.hp).toBeLessThan(99);
   });
 
-  it('총알 수 게이트는 30발마다 1씩 오르고 한도(원래 값+3)를 넘지 않는다', () => {
+  it('총알을 아무리 많이 맞춰도 게이트 값은 그대로다', () => {
     const state = emptied(1, 40);
     state.player.x = px(40);
     state.player.damage = 1;
+    state.player.shots = 6;
     const gate = gateAt(state, px(500), effect('shotsUp', 2), effect('dmgUp', 1));
     gate.z = px(500);
-    state.player.shots = 6;
     play(state, 150, () => ({ targetX: px(40) }));
-    expect(gate.zones[0].effect.hits).toBeGreaterThanOrEqual(30);
-    expect(gate.zones[0].effect.value).toBeGreaterThan(2);
-    expect(gate.zones[0].effect.value).toBeLessThanOrEqual(2 + 3);
+    expect(gate.zones[0].effect.value).toBe(2);
+  });
+
+  it('보이는 칸에는 언제나 파랑과 빨강이 섞여 있고, 가려진 칸(?)은 파랑·빨강이 모두 나온다', () => {
+    let hiddenGood = 0;
+    let hiddenBad = 0;
+    for (let seed = 1; seed <= 300; seed += 1) {
+      for (const stage of [1, 2, 5, 8, 12, 20, 25, 40, 80, 120]) {
+        const state = createState(seed);
+        state.stage = stage - 1;
+        state.queue = [];
+        state.stageStart = state.distance;
+        state.player.star = Number.MAX_SAFE_INTEGER;
+        state.distance += px(900);
+        if (stage % STAGE_BOSS_EVERY === 1 && stage > 1) {
+          state.afterBossTimer = 1;
+          state.bossActive = false;
+        }
+        step(state, { targetX: CENTER });
+        const gateSpawn = state.queue.find((q) => q.kind === 'gate');
+        if (!gateSpawn?.gate) {
+          continue;
+        }
+        const visible = gateSpawn.gate.zones.filter((z) => !z.hidden);
+        const bad = visible.filter((z) => isTrapKind(z.effect.kind)).length;
+        // 보이는 칸에는 파랑이 반드시 있고, 둘 이상이면 빨강도 있다
+        expect(bad, `seed ${seed} stage ${stage}`).toBeLessThan(visible.length);
+        if (visible.length >= 2) {
+          expect(bad, `seed ${seed} stage ${stage}`).toBeGreaterThanOrEqual(1);
+        }
+        for (const zone of gateSpawn.gate.zones.filter((z) => z.hidden)) {
+          if (isTrapKind(zone.effect.kind)) {
+            hiddenBad += 1;
+          } else {
+            hiddenGood += 1;
+          }
+        }
+      }
+    }
+    expect(hiddenGood).toBeGreaterThan(10);
+    expect(hiddenBad).toBeGreaterThan(10);
+    // 무작위: 한쪽이 압도적이지 않다(절반 안팎)
+    expect(Math.abs(hiddenGood - hiddenBad)).toBeLessThan((hiddenGood + hiddenBad) * 0.3);
   });
 });
 
@@ -675,31 +716,76 @@ describe('5줄 도로', () => {
     expect(LANE_WIDTH * LANE_COUNT).toBe(FIELD.width);
   });
 
-  it('귤 덩어리는 어느 줄 배치에서도 연속 2줄 이상의 통로를 남긴다(공격력이 없어도 움직임만으로 피할 수 있다)', () => {
-    const corridor = LANE_WIDTH * 2 - px(20);
+  /** 큐에 들어간 귤 덩어리를 줄(band)별로 묶고, 각 줄이 막는 도로 칸(0~4)의 집합을 구한다. */
+  function lanesBlockedByBand(state: OrangeState): Set<number>[] {
+    const bands = new Map<number, Set<number>>();
+    state.queue
+      .filter((q) => q.kind === 'boulder')
+      .forEach((b) => {
+        const key = Math.floor((b.at - state.stageStart) / px(100));
+        const lanes = bands.get(key) ?? new Set<number>();
+        if (b.roll) {
+          for (let lane = Math.round(b.roll.min / LANE_WIDTH); lane < Math.round(b.roll.max / LANE_WIDTH); lane += 1) {
+            lanes.add(lane);
+          }
+        } else {
+          const w = (b.w ?? 0) + px(8);
+          for (let lane = Math.round((b.x - w / 2) / LANE_WIDTH); lane < Math.round((b.x + w / 2) / LANE_WIDTH); lane += 1) {
+            lanes.add(lane);
+          }
+        }
+        bands.set(key, lanes);
+      });
+    return [...bands.entries()].sort((x, y) => x[0] - y[0]).map(([, lanes]) => lanes);
+  }
+
+  it('귤 덩어리는 처음엔 1줄, 점점 늘어 50스테이지부터는 언제나 4줄을 막고, 통로는 이어진 빈 줄로 남는다', () => {
+    const expectedBlocked = (stage: number): number[] => (stage < 6 ? [1] : stage < 15 ? [2] : stage < 30 ? [3] : stage < 50 ? [3, 4] : [4]);
     for (let seed = 1; seed <= 150; seed += 1) {
-      for (const stage of [1, 5, 9, 14, 25, 61, 99, 101, 141]) {
+      for (const stage of [1, 3, 5, 6, 9, 14, 15, 25, 29, 31, 49, 51, 61, 99, 101, 141]) {
         const state = planStage(seed, stage);
-        const boulders = state.queue.filter((q) => q.kind === 'boulder');
-        // 같은 줄(깊이가 비슷한 것)끼리 묶는다
-        const bands = new Map<number, typeof boulders>();
-        boulders.forEach((b) => {
-          const key = Math.floor((b.at - state.stageStart) / px(100));
-          bands.set(key, [...(bands.get(key) ?? []), b]);
-        });
-        bands.forEach((band) => {
-          const spans = band.map((b) => [b.x - (b.w ?? 0) / 2, b.x + (b.w ?? 0) / 2]).sort((x, y) => x[0] - y[0]);
-          let cursor = 0;
-          let widest = 0;
-          spans.forEach(([from, to]) => {
-            widest = Math.max(widest, from - cursor);
-            cursor = Math.max(cursor, to);
-          });
-          widest = Math.max(widest, FIELD.width - cursor);
-          expect(widest, `seed ${seed} stage ${stage}`).toBeGreaterThanOrEqual(corridor);
+        const bands = lanesBlockedByBand(state);
+        expect(bands.length, `seed ${seed} stage ${stage}`).toBeGreaterThan(0);
+        bands.forEach((blocked) => {
+          expect(expectedBlocked(stage), `seed ${seed} stage ${stage}`).toContain(blocked.size);
+          const free = Array.from({ length: LANE_COUNT }, (_, i) => i).filter((i) => !blocked.has(i));
+          expect(free.length).toBeGreaterThanOrEqual(1);
+          // 통로는 서로 이어진 빈 줄이다
+          expect(free[free.length - 1] - free[0] + 1, `seed ${seed} stage ${stage}`).toBe(free.length);
         });
       }
     }
+  });
+
+  it('덩어리끼리 빈틈없이 줄을 덮고, 굴러다니는 덩어리는 자기 구역을 벗어나지 않아 통로를 침범하지 않는다', () => {
+    for (let seed = 1; seed <= 150; seed += 1) {
+      for (const stage of [20, 25, 61, 101]) {
+        const state = planStage(seed, stage);
+        const bands = lanesBlockedByBand(state);
+        const rollers = state.queue.filter((q) => q.kind === 'boulder' && q.roll);
+        rollers.forEach((r) => {
+          const roll = r.roll;
+          expect(roll && roll.min >= 0 && roll.max <= FIELD.width).toBe(true);
+        });
+        bands.forEach((blocked) => expect(blocked.size).toBeLessThan(LANE_COUNT));
+      }
+    }
+  });
+
+  it('이어지는 두 줄의 통로는 두 줄 넘게 멀어지지 않는다(옮겨 갈 시간 보장)', () => {
+    let pairs = 0;
+    for (let seed = 1; seed <= 400; seed += 1) {
+      for (const stage of [8, 14, 25, 61, 101, 141]) {
+        const bands = lanesBlockedByBand(planStage(seed, stage));
+        if (bands.length < 2) {
+          continue;
+        }
+        pairs += 1;
+        const first = (blocked: Set<number>): number => Array.from({ length: LANE_COUNT }, (_, i) => i).find((i) => !blocked.has(i)) ?? 0;
+        expect(Math.abs(first(bands[1]) - first(bands[0])), `seed ${seed} stage ${stage}`).toBeLessThanOrEqual(2);
+      }
+    }
+    expect(pairs).toBeGreaterThan(50);
   });
 });
 
