@@ -75,9 +75,9 @@ const ENEMY = {
 
 /**
  * 적의 체력은 "지금 내 실제 화력" 에서 정한다(곡선으로 미리 정하지 않는다). 내 화력이 자라는 만큼 부술 맛이 계속 이어지고,
- * 난이도는 도전 배율(challengePercent)과 크기·속도·개수로 올린다. 도전 배율 100% 는 "접근하는 내내 계속 쏘면 겨우 부수는" 정도다.
+ * 난이도는 도전 배율(challengePercent)과 크기·속도·개수로 올린다. 도전 배율 100% 는 "접근하는 내내 계속 쏘면 겨우 부수는" 정도이고, 실제로는 다른 일도 해야 해서 55% 면 부술 수 있는 것이 70% 안팎, 비켜 가야 하는 것이 나머지가 된다.
  */
-const CHALLENGE = { startPercent: 60, perStage: 3, maxPercent: 200 } as const;
+const CHALLENGE = { startPercent: 40, perStage: 1, maxPercent: 55 } as const;
 
 const BOSS = {
   holdZ: px(340),
@@ -89,8 +89,8 @@ const BOSS = {
   shieldEvery: 480,
   shieldTicks: 120,
   killBonus: 1000,
-  seconds: 20,
-  growthPercent: 15,
+  seconds: 10,
+  growthPercent: 8,
 } as const;
 
 export const STAGE_BOSS_EVERY = STAGE.bossEvery;

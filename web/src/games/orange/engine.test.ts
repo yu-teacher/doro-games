@@ -220,8 +220,8 @@ describe('적과 점수', () => {
     for (let i = 1; i < percents.length; i += 1) {
       expect(percents[i]).toBeGreaterThanOrEqual(percents[i - 1]);
     }
-    expect(percents[0]).toBeGreaterThanOrEqual(60);
-    expect(percents[79]).toBe(200);
+    expect(percents[0]).toBeGreaterThanOrEqual(40);
+    expect(percents[79]).toBe(55);
   });
 
   it('기준 화력은 치킨 같은 일시 효과를 빼고 센다', () => {
@@ -249,9 +249,9 @@ describe('스테이지 스폰', () => {
     expect(kinds.has('grunt')).toBe(true);
     const boulder = state.enemies.find((e) => e.kind === 'boulder');
     if (boulder) {
-      // 스테이지 1: 내 화력 45 × 접근 시간 11초 × 도전 배율 63% × (60~140%)
-      expect(boulder.maxHp).toBeGreaterThanOrEqual(180);
-      expect(boulder.maxHp).toBeLessThanOrEqual(440);
+      // 스테이지 1: 내 화력 45 × 접근 시간 11초 × 도전 배율 41% × (60~140%)
+      expect(boulder.maxHp).toBeGreaterThanOrEqual(115);
+      expect(boulder.maxHp).toBeLessThanOrEqual(290);
     }
   });
 
