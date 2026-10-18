@@ -1,4 +1,4 @@
-import { FIELD, FPS, PLAYER, firepower, nextUint, px, runSpeedFor, type Enemy, type GateEffect, type OrangeInput, type OrangeState } from './engine';
+import { FIELD, FPS, PLAYER, firepower, gateBounds, nextUint, px, runSpeedFor, type Enemy, type GateEffect, type OrangeInput, type OrangeState } from './engine';
 
 /**
  * 규칙 점검용 봇(화면에는 쓰이지 않는다). 게이트의 이로운 쪽을 고르고, 다가오는 귤 덩어리·무리·덤벨을 피하고, 아이템을 줍고,
@@ -15,6 +15,8 @@ export interface BotOptions {
   gateMistake?: number;
   /** 아이템을 줍지 않는다 */
   ignoreItems?: boolean;
+  /** 게이트를 고르는 방식: best(이로운 쪽) 또는 worst(일부러 가장 나쁜 쪽). 선택에 결과가 있는지 재 볼 때 쓴다 */
+  gatePolicy?: 'best' | 'worst';
   seed?: number;
 }
 
@@ -36,6 +38,10 @@ function gateValue(effect: GateEffect, player: OrangeState['player']): number {
       return -(effect.value / player.shots) * 100;
     case 'shotsHalf':
       return -50;
+    case 'dmgDown':
+      return -effect.value;
+    case 'rateDown':
+      return -(effect.value / player.interval) * 100;
   }
 }
 
@@ -51,7 +57,7 @@ export function createBot(options: BotOptions = {}): (state: OrangeState) => Ora
   let rng = (options.seed ?? 1) >>> 0;
   let distractedUntil = 0;
   let distractedTo = FIELD.width / 2;
-  let gateChoice: { gateId: number; left: boolean } | null = null;
+  let gateChoice: { gateId: number; zone: number } | null = null;
   const roll = (n: number): number => {
     const { value, next } = nextUint(rng);
     rng = next;
@@ -73,11 +79,18 @@ export function createBot(options: BotOptions = {}): (state: OrangeState) => Ora
       : [...state.enemies].filter((e) => e.z > 0 && killable(state, e)).sort((a, b) => a.z - b.z)[0];
     if (gate) {
       if (gateChoice?.gateId !== gate.id) {
-        const better = gateValue(gate.left, player) >= gateValue(gate.right, player);
-        const mistaken = options.gateMistake !== undefined && roll(1000) < options.gateMistake * 1000;
-        gateChoice = { gateId: gate.id, left: mistaken ? !better : better };
+        // 가려진 칸은 모르니 0(득도 실도 없음)으로 본다
+        const values = gate.zones.map((zone) => (zone.hidden ? 0 : gateValue(zone.effect, player)));
+        const target = options.gatePolicy === 'worst' ? Math.min(...values) : Math.max(...values);
+        let zone = values.indexOf(target);
+        if (options.gateMistake !== undefined && roll(1000) < options.gateMistake * 1000) {
+          zone = roll(gate.zones.length);
+        }
+        gateChoice = { gateId: gate.id, zone };
       }
-      desired = gateChoice.left ? FIELD.width / 4 : (FIELD.width * 3) / 4;
+      // 흔들리는 게이트는 지금 위치를 따라간다
+      const bounds = gateBounds(gate, state.tick)[gateChoice.zone];
+      desired = Math.round((bounds.x0 + bounds.x1) / 2);
     } else if (item) {
       desired = item.x;
     } else if (aimAt) {

@@ -1,6 +1,6 @@
 import { type EnemyKind, type GameEvent } from './engine';
 import { project } from './view';
-import { BOMB_QUIPS, BOSS_DOWN, BOSS_INTRO, BOSS_NAME, BOSS_SHIELD, GATE_TITLES, gateValueText, isTrap, pick, quipFor } from './jokes';
+import { BOMB_QUIPS, BOSS_DOWN, INFINITE_LINES, INFINITE_TITLE, BOSS_INTRO, BOSS_NAME, BOSS_SHIELD, GATE_TITLES, gateValueText, isTrap, pick, quipFor } from './jokes';
 
 /** 화면 효과(말풍선, 반짝임, 흔들림). 게임 규칙과 무관하고 엔진의 난수도 쓰지 않는다. 좌표는 px 이다. */
 
@@ -134,8 +134,16 @@ export function applyEvent(fx: Effects, event: GameEvent, rnd: () => number): vo
         fx.banner = { title: `STAGE ${event.n}`, sub: '', age: 0, life: 70 };
       }
       break;
+    case 'infinite':
+      fx.shake = 20;
+      fx.banner = { title: INFINITE_TITLE, sub: pick(INFINITE_LINES, pickIndex), age: 0, life: 240 };
+      break;
     case 'bossIntro':
       fx.shake = 14;
+      // 무한 모드에 막 들어선 순간이면 그 배너를 지키고, 보스 등장은 흔들림으로만 알린다
+      if (fx.banner?.title === INFINITE_TITLE) {
+        break;
+      }
       fx.banner = { title: BOSS_NAME, sub: pick(BOSS_INTRO, pickIndex), age: 0, life: 150 };
       break;
     case 'bossShield':

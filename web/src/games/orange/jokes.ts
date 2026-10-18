@@ -17,7 +17,13 @@ export const GATE_TITLES: Record<GateKind, readonly string[]> = {
   dmgUp: ['과즙 팡팡', '신맛 강화', '껍질 단단히', '새콤 강타'],
   shotsDown: ['야근', '월요일', '귤이 썩었다', '손이 시림', '회식'],
   shotsHalf: ['월급 나누기', '귤 반쪽', '도둑 습격', '나눠 먹기'],
+  dmgDown: ['과즙 빠짐', '귤이 시들었다', '신맛 사라짐', '힘이 쭉'],
+  rateDown: ['손이 느려짐', '귤 까기 귀찮음', '월요병', '졸음 운전'],
 };
+
+/** 들어가기 전에는 효과를 알 수 없는 칸 */
+export const HIDDEN_TITLE = '미스터리';
+export const HIDDEN_TEXT = '???';
 
 /** 게이트 가운데에 크게 쓰는 값 표기 */
 export function gateValueText(kind: GateKind, value: number): string {
@@ -34,11 +40,15 @@ export function gateValueText(kind: GateKind, value: number): string {
       return `−${value}`;
     case 'shotsHalf':
       return `÷${value}`;
+    case 'dmgDown':
+      return `공격 −${value}%`;
+    case 'rateDown':
+      return `연사 −${value}`;
   }
 }
 
 export function isTrap(kind: GateKind): boolean {
-  return kind === 'shotsDown' || kind === 'shotsHalf';
+  return kind === 'shotsDown' || kind === 'shotsHalf' || kind === 'dmgDown' || kind === 'rateDown';
 }
 
 /** 적을 쓰러뜨릴 때 떠오르는 짧은 말 */
@@ -58,6 +68,9 @@ export const ITEM_QUIPS: Record<'orange' | 'chicken' | 'cash' | 'star' | 'pierce
 export const BOMB_QUIPS: readonly string[] = ['귤 폭탄 투하!', '펑! 귤즙', '과즙 폭발', '새콤달콤 폭격'];
 
 export const SHIELD_BREAK_QUIPS: readonly string[] = ['귤이 대신 맞았다!', '귤 터짐!', '한 번은 봐줄게'];
+
+export const INFINITE_TITLE = '∞ 무한 모드 돌입!';
+export const INFINITE_LINES: readonly string[] = ['여기서부터는 끝이 없어요', '이제부터 도로롱도 모른다', '귤의 끝은 없다', '살아남는 자가 귤을 먹는다'];
 
 export const BOSS_NAME = '근육 도로롱';
 export const BOSS_INTRO: readonly string[] = ['귤은 내 거다', '오늘 하체 하는 날이다', '단백질 없이 귤은 못 먹지', '헬스장 관장 등판', '중량 올린다'];
@@ -97,6 +110,9 @@ export const TIPS: readonly string[] = [
   '큰 숫자는 피하고, 작은 숫자는 쏴서 부숴요',
   '10스테이지마다 근육 도로롱이 와요',
   '내 화력보다 큰 숫자는 비켜 가요',
+  '좋은 칸은 좁고 나쁜 칸은 넓어요',
+  '미스터리 칸은 들어가 봐야 알아요',
+  '100스테이지부터는 무한 모드예요',
   '치킨을 먹으면 손이 안 보여요',
 ];
 

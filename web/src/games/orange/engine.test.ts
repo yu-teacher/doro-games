@@ -2,18 +2,27 @@ import { describe, expect, it } from 'vitest';
 import {
   FIELD,
   FPS,
+  INFINITE_FROM_STAGE,
+  LANE_COUNT,
+  LANE_WIDTH,
   PLAYER,
   PX,
   STAGE_BOSS_EVERY,
   comboMultiplier,
   createState,
+  anchorFirepower,
   baseFirepower,
   challengePercent,
+  crowdSpeedBonus,
   damageCap,
   effect,
   firepower,
   firepowerCap,
+  gateBounds,
+  gateZoneAt,
+  infiniteLevel,
   intervalFloor,
+  isInfinite,
   nextUint,
   px,
   runSpeedFor,
@@ -24,6 +33,7 @@ import {
   type EnemyKind,
   type Gate,
   type GateEffect,
+  type GateZone,
   type OrangeInput,
   type OrangeState,
 } from './engine';
@@ -52,10 +62,43 @@ function enemyAt(state: OrangeState, kind: EnemyKind, x: number, z: number, hp =
   return enemy;
 }
 
+/** 가운데에서 둘로 나뉜 게이트(예전 방식). 칸 배열의 0번이 왼쪽, 1번이 오른쪽이다. */
 function gateAt(state: OrangeState, z: number, left: GateEffect, right: GateEffect): Gate {
-  const gate: Gate = { id: state.nextId++, z, left, right, used: false };
+  const gate: Gate = {
+    id: state.nextId++,
+    z,
+    sway: 0,
+    used: false,
+    zones: [
+      { x0: 0, x1: FIELD.width / 2, effect: left, hidden: false },
+      { x0: FIELD.width / 2, x1: FIELD.width, effect: right, hidden: false },
+    ],
+  };
   state.gates.push(gate);
   return gate;
+}
+
+/** 다음 스테이지를 계획하게 만들고, 그때 만들어진 스폰 큐를 돌려준다. */
+function planStage(seed: number, stage: number, tweak: (s: OrangeState) => void = () => undefined): OrangeState {
+  const state = createState(seed);
+  // 스테이지 1 은 시작할 때 이미 계획되어 있다(0 은 10 의 배수라 보스 스테이지로 오인되므로 건너뛰지 못한다)
+  if (stage === 1) {
+    tweak(state);
+    return state;
+  }
+  state.queue = [];
+  state.stage = stage - 1;
+  state.player.star = Number.MAX_SAFE_INTEGER;
+  tweak(state);
+  if ((stage - 1) % STAGE_BOSS_EVERY === 0) {
+    // 보스 스테이지 다음은 거리가 아니라 "보스를 잡고 잠깐 쉬는" 타이머로 넘어간다
+    state.bossActive = false;
+    state.afterBossTimer = 1;
+  } else {
+    state.distance = state.stageStart + px(900);
+  }
+  step(state, { targetX: CENTER });
+  return state;
 }
 
 describe('난수', () => {
@@ -262,23 +305,23 @@ describe('스테이지 스폰', () => {
   });
 
   /** 다음 스테이지를 계획하게 만들고 그때 큐에 들어간 귤 덩어리의 체력을 돌려준다. */
-  function boulderHpsAfterNextStage(shots: number, damage: number): number[] {
-    const state = createState(5);
-    state.queue = [];
-    state.player.shots = shots;
-    state.player.damage = damage;
-    state.player.star = Number.MAX_SAFE_INTEGER;
-    state.distance = state.stageStart + px(900);
-    step(state, { targetX: CENTER });
+  function boulderHpsAfterNextStage(shots: number, damage: number, stage = 1): number[] {
+    const state = planStage(5, stage, (s) => {
+      s.player.shots = shots;
+      s.player.damage = damage;
+    });
     return state.queue.filter((q) => q.kind === 'boulder').map((q) => q.hp ?? 0);
   }
 
-  it('적의 체력은 지금 내 화력에서 정해진다(내가 강해지면 부술 맛이 이어지게 숫자도 함께 큰다)', () => {
-    const weak = boulderHpsAfterNextStage(3, 3);
-    const strong = boulderHpsAfterNextStage(12, 12);
+  it('적의 체력은 내 현재 화력이 아니라 이 스테이지의 한계 화력에서 정해진다(그래서 약하면 정말 못 부순다)', () => {
+    const weak = boulderHpsAfterNextStage(1, 1);
+    const strong = boulderHpsAfterNextStage(16, 40);
     expect(weak.length).toBeGreaterThan(0);
-    expect(strong.length).toBe(weak.length);
-    strong.forEach((hp, i) => expect(hp).toBeGreaterThan(weak[i] * 8));
+    expect(strong).toEqual(weak);
+    // 스테이지가 오르면 같은 모양의 귤 덩어리라도 체력 숫자가 커진다
+    const later = boulderHpsAfterNextStage(3, 3, 31);
+    expect(Math.max(...later)).toBeGreaterThan(Math.max(...weak) * 20);
+    expect(anchorFirepower(30)).toBeGreaterThan(anchorFirepower(10));
   });
 
   it('이미 상한에 닿은 스탯의 게이트는 나오지 않고 공격력 게이트로 바뀐다', () => {
@@ -294,8 +337,7 @@ describe('스테이지 스폰', () => {
       state.distance = state.stageStart + px(900);
       step(state, { targetX: CENTER });
       state.queue.filter((q) => q.kind === 'gate').forEach((q) => {
-        kinds.add(q.gate?.left.kind ?? '');
-        kinds.add(q.gate?.right.kind ?? '');
+        q.gate?.zones.forEach((zone) => kinds.add(zone.effect.kind));
       });
     }
     expect(kinds.has('shotsUp')).toBe(false);
@@ -395,8 +437,8 @@ describe('게이트', () => {
       state.queue.forEach((q) => values.push(q.hp ?? 0, q.at, q.x, q.count ?? 0));
       state.enemies.forEach((e) => values.push(e.hp, e.maxHp));
       values.forEach((v) => expect(Number.isSafeInteger(v), `stage ${stage}: ${v}`).toBe(true));
-      // 체력 계산의 곱셈 중간값(화력 × 11초 × 도전 배율 × 적중 계수 × 변동)도 안전 한계의 1/10 아래(실제 계수는 이보다 작아 여유가 더 있다)
-      expect(firepowerCap(stage) * 11 * 55 * 100 * 139).toBeLessThan(Number.MAX_SAFE_INTEGER / 10);
+      // 체력 계산의 곱셈 중간값(기준 화력 × 11초 × 적중 계수 → × 도전 배율 × 변동)도 안전 한계의 1/10 아래
+      expect(Math.floor((anchorFirepower(stage) * 11 * 32) / 100) * challengePercent(stage) * 139).toBeLessThan(Number.MAX_SAFE_INTEGER / 10);
     }
   });
 
@@ -408,8 +450,8 @@ describe('게이트', () => {
     const gate = gateAt(state, px(300), effect('shotsUp', 2), effect('dmgUp', 1));
     const enemy = enemyAt(state, 'grunt', px(40), px(600), 99);
     play(state, 80, () => ({ targetX: px(40) }));
-    expect(gate.left.hits).toBe(1);
-    expect(gate.right.hits).toBe(0);
+    expect(gate.zones[0].effect.hits).toBe(1);
+    expect(gate.zones[1].effect.hits).toBe(0);
     expect(enemy.hp).toBeLessThan(99);
   });
 
@@ -421,9 +463,9 @@ describe('게이트', () => {
     gate.z = px(500);
     state.player.shots = 6;
     play(state, 150, () => ({ targetX: px(40) }));
-    expect(gate.left.hits).toBeGreaterThanOrEqual(30);
-    expect(gate.left.value).toBeGreaterThan(2);
-    expect(gate.left.value).toBeLessThanOrEqual(2 + 3);
+    expect(gate.zones[0].effect.hits).toBeGreaterThanOrEqual(30);
+    expect(gate.zones[0].effect.value).toBeGreaterThan(2);
+    expect(gate.zones[0].effect.value).toBeLessThanOrEqual(2 + 3);
   });
 });
 
@@ -623,5 +665,221 @@ describe('결정성과 정수', () => {
       expect(bad, `tick ${state.tick}`).toBeUndefined();
     }
     expect(PX).toBe(100);
+  });
+});
+
+describe('5줄 도로', () => {
+  it('도로는 5줄이고 줄 폭은 도로 폭의 1/5 이다', () => {
+    expect(LANE_COUNT).toBe(5);
+    expect(LANE_WIDTH * LANE_COUNT).toBe(FIELD.width);
+  });
+
+  it('귤 덩어리는 어느 줄 배치에서도 연속 2줄 이상의 통로를 남긴다(공격력이 없어도 움직임만으로 피할 수 있다)', () => {
+    const corridor = LANE_WIDTH * 2 - px(20);
+    for (let seed = 1; seed <= 150; seed += 1) {
+      for (const stage of [1, 5, 9, 14, 25, 61, 99, 101, 141]) {
+        const state = planStage(seed, stage);
+        const boulders = state.queue.filter((q) => q.kind === 'boulder');
+        // 같은 줄(깊이가 비슷한 것)끼리 묶는다
+        const bands = new Map<number, typeof boulders>();
+        boulders.forEach((b) => {
+          const key = Math.floor((b.at - state.stageStart) / px(100));
+          bands.set(key, [...(bands.get(key) ?? []), b]);
+        });
+        bands.forEach((band) => {
+          const spans = band.map((b) => [b.x - (b.w ?? 0) / 2, b.x + (b.w ?? 0) / 2]).sort((x, y) => x[0] - y[0]);
+          let cursor = 0;
+          let widest = 0;
+          spans.forEach(([from, to]) => {
+            widest = Math.max(widest, from - cursor);
+            cursor = Math.max(cursor, to);
+          });
+          widest = Math.max(widest, FIELD.width - cursor);
+          expect(widest, `seed ${seed} stage ${stage}`).toBeGreaterThanOrEqual(corridor);
+        });
+      }
+    }
+  });
+});
+
+describe('게이트 변칙', () => {
+  function plans(stage: number, seeds = 120): Gate['zones'][] {
+    const result: Gate['zones'][] = [];
+    for (let seed = 1; seed <= seeds; seed += 1) {
+      const state = planStage(seed, stage);
+      const gate = state.queue.find((q) => q.kind === 'gate')?.gate;
+      if (gate) {
+        result.push(gate.zones);
+      }
+    }
+    return result;
+  }
+
+  it('칸은 도로 전체를 빈틈없이 줄 단위로 나눈다', () => {
+    [3, 14, 31, 61].forEach((stage) =>
+      plans(stage).forEach((zones) => {
+        expect(zones[0].x0).toBe(0);
+        expect(zones[zones.length - 1].x1).toBe(FIELD.width);
+        zones.forEach((zone, i) => {
+          expect(zone.x1 - zone.x0).toBeGreaterThan(0);
+          expect((zone.x1 - zone.x0) % LANE_WIDTH).toBe(0);
+          if (i > 0) {
+            expect(zone.x0).toBe(zones[i - 1].x1);
+          }
+        });
+      }),
+    );
+  });
+
+  it('초반에는 두 칸뿐이고 12스테이지부터 3분할, 25스테이지부터 5분할이 나온다', () => {
+    expect(new Set(plans(5).map((z) => z.length))).toEqual(new Set([2]));
+    expect(new Set(plans(14, 200).map((z) => z.length)).has(3)).toBe(true);
+    expect(new Set(plans(31, 300).map((z) => z.length)).has(5)).toBe(true);
+    expect(new Set(plans(14, 200).map((z) => z.length)).has(5)).toBe(false);
+  });
+
+  it('후반에는 이로운 칸이 좁고 나쁜 칸이 훨씬 넓다(좋은 칸 폭 < 나쁜 칸 폭)', () => {
+    let goodWidth = 0;
+    let badWidth = 0;
+    plans(41, 300).forEach((zones) =>
+      zones.forEach((zone) => {
+        if (zone.hidden) {
+          return;
+        }
+        const bad = ['shotsDown', 'shotsHalf', 'dmgDown', 'rateDown'].includes(zone.effect.kind);
+        if (bad) {
+          badWidth += zone.x1 - zone.x0;
+        } else {
+          goodWidth += zone.x1 - zone.x0;
+        }
+      }),
+    );
+    expect(badWidth).toBeGreaterThan(goodWidth * 2);
+  });
+
+  it('가려진 칸(?)은 8스테이지부터 나온다', () => {
+    expect(plans(5, 300).some((zones) => zones.some((z) => z.hidden))).toBe(false);
+    expect(plans(21, 300).some((zones) => zones.some((z) => z.hidden))).toBe(true);
+  });
+
+  it('흔들리는 게이트는 15스테이지부터 나오고, 어느 순간에도 칸이 도로를 빈틈없이 나눈다', () => {
+    const swaying = (stage: number): Gate[] => {
+      const gates: Gate[] = [];
+      for (let seed = 1; seed <= 200; seed += 1) {
+        const g = planStage(seed, stage).queue.find((q) => q.kind === 'gate')?.gate;
+        if (g) {
+          gates.push({ id: seed, z: 0, zones: g.zones, sway: g.sway, used: false });
+        }
+      }
+      return gates.filter((g) => g.sway > 0);
+    };
+    expect(swaying(11)).toHaveLength(0);
+    const moving = swaying(31);
+    expect(moving.length).toBeGreaterThan(0);
+    moving.forEach((gate) => {
+      for (let tick = 0; tick < 480; tick += 7) {
+        const bounds = gateBounds(gate, tick);
+        expect(bounds[0].x0).toBe(0);
+        expect(bounds[bounds.length - 1].x1).toBe(FIELD.width);
+        bounds.forEach((b, i) => {
+          expect(b.x1).toBeGreaterThan(b.x0);
+          if (i > 0) {
+            expect(b.x0).toBe(bounds[i - 1].x1);
+          }
+        });
+        // 어떤 x 에서든 칸이 정해지고, 그 칸의 범위 안에 있다
+        for (let x = 0; x < FIELD.width; x += px(25)) {
+          const zone = gateZoneAt(gate, tick, x);
+          const index = gate.zones.indexOf(zone);
+          expect(x).toBeGreaterThanOrEqual(bounds[index].x0);
+          expect(x).toBeLessThan(bounds[index].x1);
+        }
+      }
+    });
+  });
+
+  it('공격력 감소·연사 느려짐 함정은 값을 깎되 1 아래·가장 느린 간격을 넘지 않는다', () => {
+    const state = emptied(1, 40);
+    state.player.damage = 100;
+    state.player.interval = 12;
+    gateAt(state, px(40), effect('dmgDown', 30), effect('rateDown', 2));
+    play(state, 60, () => ({ targetX: px(40) }));
+    expect(state.player.damage).toBe(70);
+
+    const right = emptied(1, 40);
+    right.player.interval = PLAYER.slowestInterval - 1;
+    gateAt(right, px(40), effect('dmgDown', 30), effect('rateDown', 5));
+    play(right, 60, () => ({ targetX: FIELD.width - px(40) }));
+    expect(right.player.interval).toBe(PLAYER.slowestInterval);
+
+    const tiny = emptied(1, 40);
+    tiny.player.damage = 1;
+    gateAt(tiny, px(40), effect('dmgDown', 90), effect('dmgUp', 1));
+    play(tiny, 60, () => ({ targetX: px(40) }));
+    expect(tiny.player.damage).toBe(1);
+  });
+
+  it('줄마다 칸이 다른 게이트에서는 서 있는 칸의 효과만 적용된다', () => {
+    const state = emptied(1, 40);
+    const effects = [effect('shotsDown', 1), effect('dmgDown', 20), effect('shotsUp', 3), effect('rateDown', 2), effect('shotsHalf', 2)];
+    const zones: GateZone[] = effects.map((e, i) => ({ x0: i * LANE_WIDTH, x1: (i + 1) * LANE_WIDTH, effect: e, hidden: false }));
+    state.gates.push({ id: state.nextId++, z: px(40), zones, sway: 0, used: false });
+    const target = LANE_WIDTH * 2 + LANE_WIDTH / 2;
+    state.player.x = target;
+    play(state, 60, () => ({ targetX: target }));
+    expect(state.player.shots).toBe(PLAYER.startShots + 3);
+  });
+});
+
+describe('무한 모드', () => {
+  it('100스테이지에서 무한 모드가 시작되고 그때 한 번만 알린다', () => {
+    expect(INFINITE_FROM_STAGE).toBe(100);
+    expect(isInfinite(99)).toBe(false);
+    expect(isInfinite(100)).toBe(true);
+    const seen: number[] = [];
+    for (const stage of [98, 99, 100, 101]) {
+      const state = planStage(3, stage);
+      if (state.events.some((e) => e.t === 'infinite')) {
+        seen.push(state.stage);
+      }
+    }
+    expect(seen).toEqual([100]);
+  });
+
+  it('무한 모드에서는 도전 배율·몰려오는 속도가 스테이지마다 계속 오른다(상한은 안전을 위한 아주 큰 값)', () => {
+    expect(infiniteLevel(99)).toBe(0);
+    expect(infiniteLevel(100)).toBe(1);
+    expect(crowdSpeedBonus(99)).toBe(0);
+    let previousChallenge = challengePercent(99);
+    let previousSpeed = crowdSpeedBonus(99);
+    for (let stage = 100; stage <= 140; stage += 1) {
+      expect(challengePercent(stage)).toBeGreaterThan(previousChallenge);
+      expect(crowdSpeedBonus(stage)).toBeGreaterThan(previousSpeed);
+      expect(runSpeedFor(stage)).toBeGreaterThanOrEqual(runSpeedFor(stage - 1));
+      previousChallenge = challengePercent(stage);
+      previousSpeed = crowdSpeedBonus(stage);
+    }
+    // 상한: 한없이 커지지 않는다(정수 안전)
+    expect(challengePercent(10_000_000)).toBe(challengePercent(1_000_000));
+    expect(crowdSpeedBonus(10_000_000)).toBe(crowdSpeedBonus(1_000_000));
+  });
+
+  it('몰려오는 적(무리·덩치)의 속도가 무한 모드에서 점점 빨라진다', () => {
+    const speedOf = (stage: number): number => {
+      const state = planStage(7, stage % STAGE_BOSS_EVERY === 0 ? stage + 1 : stage);
+      state.queue = [];
+      state.player.shots = 1;
+      state.distance += px(5000);
+      const crowdState = createState(7);
+      crowdState.stage = stage;
+      crowdState.queue = [{ at: 0, kind: 'crowd', x: CENTER, hp: 5, count: 3 }];
+      crowdState.stageStart = Number.MAX_SAFE_INTEGER / 2;
+      crowdState.player.star = Number.MAX_SAFE_INTEGER;
+      step(crowdState, { targetX: CENTER });
+      return crowdState.enemies[0].speed;
+    };
+    expect(speedOf(130)).toBeGreaterThan(speedOf(110));
+    expect(speedOf(110)).toBeGreaterThan(speedOf(99));
+    expect(speedOf(99)).toBe(speedOf(50));
   });
 });

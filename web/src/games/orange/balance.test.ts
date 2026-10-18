@@ -47,13 +47,16 @@ describe('균형 점검(봇)', () => {
     const skilled = seeds.map((s) => simulate(s, maxTicks, {}));
     const casual = seeds.map((s) => simulate(s, maxTicks, CASUAL));
     const idle = seeds.map((s) => simulate(s, maxTicks, null));
+    const worst = seeds.map((s) => simulate(s, maxTicks, { gatePolicy: 'worst' }));
     appendFileSync(
       process.env.BALANCE_LOG ?? '/dev/null',
-      `숙련: ${describeRuns(skilled)}\n서툰: ${describeRuns(casual)}\n가만: ${describeRuns(idle)}\n`,
+      `숙련: ${describeRuns(skilled)}\n서툰: ${describeRuns(casual)}\n가만: ${describeRuns(idle)}\n나쁜 선택만: ${describeRuns(worst)}\n`,
     );
     expect(median(skilled.map((r) => r.stage))).toBeGreaterThanOrEqual(median(idle.map((r) => r.stage)));
     expect(median(casual.map((r) => r.stage))).toBeGreaterThanOrEqual(median(idle.map((r) => r.stage)));
 
-    // 스테이지 80 에서 성장이 멈추므로 잘하는 판은 끝없이 이어질 수 있다(10분 상한에 닿는 판이 있어도 오류가 아니다)
+    // 게이트 선택에 결과가 있다: 일부러 나쁜 칸만 고르면 이로운 칸을 고르는 것보다 훨씬 일찍 끝난다
+    expect(median(skilled.map((r) => r.stage))).toBeGreaterThan(median(worst.map((r) => r.stage)) * 2);
+    // 스테이지 100 에서 성장이 멈추므로 잘하는 판은 끝없이 이어질 수 있다(10분 상한에 닿는 판이 있어도 오류가 아니다)
   }, 300000);
 });

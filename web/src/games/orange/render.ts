@@ -7,14 +7,17 @@ import {
   comboMultiplier,
   firepower,
   firepowerCap,
+  gateBounds,
+  infiniteLevel,
+  isInfinite,
+  LANE_COUNT,
   type Enemy,
   type Gate,
-  type GateEffect,
   type ItemKind,
   type OrangeState,
 } from './engine';
 import { formatCount } from './format';
-import { BOSS_NAME, GATE_TITLES, gateValueText, isTrap, pick, rankTitle } from './jokes';
+import { BOSS_NAME, GATE_TITLES, HIDDEN_TEXT, HIDDEN_TITLE, gateValueText, isTrap, pick, rankTitle } from './jokes';
 import { HORIZON_Y, PLAYER_Y, VIEW, project } from './view';
 
 /** 그리기 전용. 상태를 읽기만 하고 바꾸지 않는다. 그림이 없으면 도형으로 대신 그린다. */
@@ -42,6 +45,7 @@ const PALETTE = {
   lane: 'rgba(226, 232, 240, 0.55)',
   gateGood: 'rgba(56, 189, 248, 0.55)',
   gateMul: 'rgba(250, 204, 21, 0.6)',
+  gateHidden: 'rgba(139, 92, 246, 0.55)',
   gateTrap: 'rgba(248, 113, 113, 0.6)',
   hpBack: 'rgba(15, 23, 42, 0.75)',
   hpFill: '#f87171',
@@ -204,7 +208,7 @@ function drawRoad(ctx: CanvasRenderingContext2D, scene: Scene): void {
   // 차선: 달린 거리만큼 뒤로 흘러간다
   const offset = (scene.state.scroll / PX) % LANE_DASH;
   ctx.strokeStyle = PALETTE.lane;
-  for (const lane of [VIEW.width / 3, (VIEW.width * 2) / 3]) {
+  for (const lane of Array.from({ length: LANE_COUNT - 1 }, (_, i) => ((i + 1) * VIEW.width) / LANE_COUNT)) {
     for (let z = -offset - LANE_DASH; z < FIELD.depth / PX; z += LANE_DASH) {
       const a = project(lane * PX, Math.max(z, -150) * PX);
       const b = project(lane * PX, Math.max(z + LANE_DASH * 0.45, -150) * PX);
@@ -221,25 +225,29 @@ function drawRoad(ctx: CanvasRenderingContext2D, scene: Scene): void {
 
 // ---------------------------------------------------------------------------------------------- 물체
 
-function drawGate(ctx: CanvasRenderingContext2D, gate: Gate): void {
-  const left = project(ROAD_LEFT, gate.z);
+function drawGate(ctx: CanvasRenderingContext2D, gate: Gate, tick: number): void {
   const mid = project(FIELD.width / 2, gate.z);
-  const right = project(ROAD_RIGHT, gate.z);
   const height = 62 * mid.scale;
-  const halves: [GateEffect, number, number][] = [
-    [gate.left, left.x, mid.x],
-    [gate.right, mid.x, right.x],
-  ];
-  halves.forEach(([chosen, x0, x1], index) => {
-    const trap = isTrap(chosen.kind);
-    ctx.fillStyle = trap ? PALETTE.gateTrap : chosen.kind === 'shotsMul' ? PALETTE.gateMul : PALETTE.gateGood;
-    ctx.fillRect(x0 + 2, mid.y - height, x1 - x0 - 4, height);
-    ctx.strokeStyle = trap ? '#f87171' : chosen.kind === 'shotsMul' ? '#facc15' : '#38bdf8';
+  const bounds = gateBounds(gate, tick);
+  gate.zones.forEach((zone, index) => {
+    const x0 = project(bounds[index].x0, gate.z).x;
+    const x1 = project(bounds[index].x1, gate.z).x;
+    const width = x1 - x0;
+    const chosen = zone.effect;
+    const trap = !zone.hidden && isTrap(chosen.kind);
+    ctx.fillStyle = zone.hidden ? PALETTE.gateHidden : trap ? PALETTE.gateTrap : chosen.kind === 'shotsMul' ? PALETTE.gateMul : PALETTE.gateGood;
+    ctx.fillRect(x0 + 1.5, mid.y - height, width - 3, height);
+    ctx.strokeStyle = zone.hidden ? '#c4b5fd' : trap ? '#f87171' : chosen.kind === 'shotsMul' ? '#facc15' : '#38bdf8';
     ctx.lineWidth = Math.max(1, 3 * mid.scale);
-    ctx.strokeRect(x0 + 2, mid.y - height, x1 - x0 - 4, height);
+    ctx.strokeRect(x0 + 1.5, mid.y - height, width - 3, height);
     const cx = (x0 + x1) / 2;
-    text(ctx, pick(GATE_TITLES[chosen.kind], gate.id + index), cx, mid.y - height * 0.74, Math.max(7, 13 * mid.scale), '#e2e8f0', { weight: '600' });
-    text(ctx, gateValueText(chosen.kind, chosen.value), cx, mid.y - height * 0.34, Math.max(9, 26 * mid.scale), trap ? COLORS.trap : '#fff');
+    const title = zone.hidden ? HIDDEN_TITLE : pick(GATE_TITLES[chosen.kind], gate.id + index);
+    const value = zone.hidden ? HIDDEN_TEXT : gateValueText(chosen.kind, chosen.value);
+    // 좁은 칸에도 글자가 들어가도록 칸 폭에 맞춰 줄인다
+    const titleSize = Math.max(6, Math.min(13 * mid.scale, width / (title.length * 0.9)));
+    const valueSize = Math.max(8, Math.min(26 * mid.scale, width / (value.length * 0.62)));
+    text(ctx, title, cx, mid.y - height * 0.74, titleSize, '#e2e8f0', { weight: '600' });
+    text(ctx, value, cx, mid.y - height * 0.34, valueSize, trap ? COLORS.trap : '#fff');
   });
 }
 
@@ -354,7 +362,11 @@ function drawHud(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const { state, best } = scene;
   const p = state.player;
   text(ctx, String(state.score), 12, 22, 26, '#fff', { align: 'left' });
-  text(ctx, `STAGE ${state.stage}`, VIEW.width - 12, 18, 15, '#cbd5e1', { align: 'right' });
+  const infinite = isInfinite(state.stage);
+  text(ctx, infinite ? `∞ STAGE ${state.stage}` : `STAGE ${state.stage}`, VIEW.width - 12, 18, 15, infinite ? '#fde68a' : '#cbd5e1', { align: 'right' });
+  if (infinite) {
+    text(ctx, `무한 +${infiniteLevel(state.stage)}`, VIEW.width - 12, 56, 11, '#fca5a5', { align: 'right', weight: '600' });
+  }
   if (best !== null) {
     text(ctx, `BEST ${best}`, VIEW.width - 12, 38, 12, '#94a3b8', { align: 'right', weight: '600' });
   }
@@ -454,7 +466,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
 
   // 먼 것부터 그린다(가까운 것이 먼 것을 가린다)
   const drawables: Drawable[] = [];
-  state.gates.forEach((gate) => drawables.push({ z: gate.z, draw: () => drawGate(ctx, gate) }));
+  state.gates.forEach((gate) => drawables.push({ z: gate.z, draw: () => drawGate(ctx, gate, state.tick) }));
   state.items.forEach((item) =>
     drawables.push({
       z: item.z,
