@@ -3,9 +3,9 @@ import type { Effects } from './effects';
 import { COLORS } from './effects';
 import {
   FIELD,
-  PLAYER,
   PX,
   comboMultiplier,
+  firepower,
   type Enemy,
   type Gate,
   type GateEffect,
@@ -13,10 +13,9 @@ import {
   type OrangeState,
 } from './engine';
 import { BOSS_NAME, GATE_TITLES, gateValueText, isTrap, pick, rankTitle } from './jokes';
+import { HORIZON_Y, PLAYER_Y, VIEW, project } from './view';
 
 /** 그리기 전용. 상태를 읽기만 하고 바꾸지 않는다. 그림이 없으면 도형으로 대신 그린다. */
-
-export const VIEW = { width: FIELD.width / PX, height: FIELD.height / PX } as const;
 
 export type Phase = 'idle' | 'playing' | 'over';
 
@@ -33,31 +32,40 @@ export interface Scene {
 
 const FONT = "system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif";
 const PALETTE = {
-  skyTop: '#10243d',
+  skyTop: '#16324f',
   skyBottom: '#0b1220',
-  gateGood: 'rgba(56, 189, 248, 0.5)',
-  gateMul: 'rgba(250, 204, 21, 0.55)',
-  gateTrap: 'rgba(248, 113, 113, 0.55)',
-  hpBack: 'rgba(15, 23, 42, 0.7)',
+  road: '#27364b',
+  roadFar: '#1b2638',
+  rail: '#e2e8f0',
+  lane: 'rgba(226, 232, 240, 0.55)',
+  gateGood: 'rgba(56, 189, 248, 0.55)',
+  gateMul: 'rgba(250, 204, 21, 0.6)',
+  gateTrap: 'rgba(248, 113, 113, 0.6)',
+  hpBack: 'rgba(15, 23, 42, 0.75)',
   hpFill: '#f87171',
 } as const;
 
-const ITEM_EMOJI: Record<ItemKind, string> = { orange: '🍊', chicken: '🍗', cash: '💰', star: '⭐' };
-const ITEM_SPRITE: Record<ItemKind, SpriteKey> = { orange: 'orange', chicken: 'chicken', cash: 'cash', star: 'star' };
+/** 눈에 보이는 크기의 기준(도로롱 위치에서의 px) */
+const SIZE = { hero: 60, grunt: 34, brute: 54, item: 34, bullet: 6, dumbbell: 30 } as const;
+const ROAD_LEFT = 0;
+const ROAD_RIGHT = FIELD.width;
+const LANE_DASH = 120;
+
+const ITEM_EMOJI: Record<ItemKind, string> = { orange: '🍊', chicken: '🍗', cash: '💰', star: '⭐', pierce: '🎯', bomb: '💣' };
 
 function text(ctx: CanvasRenderingContext2D, value: string, x: number, y: number, size: number, color: string, options: { weight?: string; align?: CanvasTextAlign } = {}): void {
-  ctx.font = `${options.weight ?? '700'} ${size}px ${FONT}`;
+  ctx.font = `${options.weight ?? '800'} ${size}px ${FONT}`;
   ctx.textAlign = options.align ?? 'center';
   ctx.textBaseline = 'middle';
   ctx.lineWidth = Math.max(2, size / 5);
-  ctx.strokeStyle = 'rgba(8, 15, 30, 0.85)';
+  ctx.strokeStyle = 'rgba(8, 15, 30, 0.9)';
   ctx.lineJoin = 'round';
   ctx.strokeText(value, x, y);
   ctx.fillStyle = color;
   ctx.fillText(value, x, y);
 }
 
-/** 상자 안에 비율을 지켜 그림을 그린다. 아래쪽 가운데가 기준(발 위치). */
+/** 상자 안에 비율을 지켜 그림을 그린다(가운데 기준). */
 function drawImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, cx: number, cy: number, w: number, h: number): void {
   const scale = Math.min(w / image.naturalWidth, h / image.naturalHeight);
   const dw = image.naturalWidth * scale;
@@ -86,7 +94,7 @@ function eyes(ctx: CanvasRenderingContext2D, cx: number, cy: number, spread: num
   }
   if (angry) {
     ctx.strokeStyle = '#1e1b4b';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(1, size * 0.4);
     ctx.beginPath();
     ctx.moveTo(cx - spread - size, cy - size * 1.4);
     ctx.lineTo(cx - spread + size, cy - size * 0.6);
@@ -108,24 +116,8 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, key: SpriteKey, cx: numb
       eyes(ctx, cx, cy - 1, w * 0.2, w * 0.11, true);
       break;
     case 'slime':
-      blob(ctx, cx, cy + 2, w, h * 0.9, '#4ade80');
-      eyes(ctx, cx, cy, w * 0.2, w * 0.1, false);
-      break;
-    case 'wall':
-      ctx.fillStyle = '#b4783c';
-      ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
-      ctx.fillStyle = '#8a5a2b';
-      for (let x = cx - w / 2; x < cx + w / 2; x += w / 4) {
-        ctx.fillRect(x, cy - 1, 2, h / 2 + 1);
-        ctx.fillRect(x + w / 8, cy - h / 2, 2, h / 2);
-      }
-      break;
-    case 'elite':
-      blob(ctx, cx, cy + 2, w, h * 0.85, '#a855f7');
+      blob(ctx, cx, cy + 2, w, h * 0.9, '#a78bfa');
       eyes(ctx, cx, cy, w * 0.2, w * 0.1, true);
-      ctx.font = `${w * 0.4}px ${FONT}`;
-      ctx.textAlign = 'center';
-      ctx.fillText('👑', cx, cy - h * 0.45);
       break;
     case 'boss':
       ctx.fillStyle = '#f6c8a0';
@@ -133,21 +125,15 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, key: SpriteKey, cx: numb
       blob(ctx, cx - w * 0.42, cy, w * 0.32, w * 0.32, '#f6c8a0');
       blob(ctx, cx + w * 0.42, cy, w * 0.32, w * 0.32, '#f6c8a0');
       eyes(ctx, cx, cy - h * 0.25, w * 0.12, w * 0.06, true);
-      ctx.font = `${w * 0.28}px ${FONT}`;
-      ctx.textAlign = 'center';
-      ctx.fillText('💪', cx, cy + h * 0.15);
-      break;
-    case 'orange':
-    case 'chicken':
-    case 'cash':
-    case 'star':
-      ctx.font = `${Math.min(w, h)}px ${FONT}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(ITEM_EMOJI[key], cx, cy);
       break;
     case 'bg':
       break;
+    default:
+      ctx.font = `${Math.min(w, h)}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(ITEM_EMOJI[key], cx, cy);
   }
 }
 
@@ -160,180 +146,250 @@ function sprite(ctx: CanvasRenderingContext2D, sprites: Sprites, key: SpriteKey,
   }
 }
 
-function drawLaneDashes(ctx: CanvasRenderingContext2D, scroll: number, alpha: number): void {
-  ctx.strokeStyle = `rgba(226, 232, 240, ${alpha})`;
-  ctx.lineWidth = 2;
-  ctx.setLineDash([22, 26]);
-  ctx.lineDashOffset = -scroll;
-  for (let x = 60; x < VIEW.width; x += 60) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, VIEW.height);
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
+function shadow(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number): void {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, w / 2, w / 6, 0, 0, Math.PI * 2);
+  ctx.fill();
 }
 
-function drawBackground(ctx: CanvasRenderingContext2D, scene: Scene): void {
-  const { state, sprites } = scene;
-  const scroll = (state.tick * 0.9) % VIEW.height;
-  const bg = sprites.bg;
-  if (bg) {
-    // 그림은 이어 붙이면 이음매가 보여서 화면을 꽉 채워 한 장으로 그리고, 움직임은 차선으로 보여 준다
-    const scale = Math.max(VIEW.width / bg.naturalWidth, VIEW.height / bg.naturalHeight);
-    const w = bg.naturalWidth * scale;
-    const h = bg.naturalHeight * scale;
-    ctx.drawImage(bg, (VIEW.width - w) / 2, (VIEW.height - h) / 2, w, h);
-    ctx.fillStyle = 'rgba(8, 15, 30, 0.42)';
-    ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-    drawLaneDashes(ctx, scroll, 0.14);
-    return;
-  }
+// ---------------------------------------------------------------------------------------------- 배경과 도로
+
+function drawBackdrop(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  const bg = scene.sprites.bg;
   const gradient = ctx.createLinearGradient(0, 0, 0, VIEW.height);
   gradient.addColorStop(0, PALETTE.skyTop);
   gradient.addColorStop(1, PALETTE.skyBottom);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-  drawLaneDashes(ctx, scroll, 0.18);
+  if (bg) {
+    // 지평선 위쪽 하늘·숲: 그림을 꽉 채워 깔고 어둡게 눌러 도로와 게임 요소가 돋보이게 한다
+    const scale = Math.max(VIEW.width / bg.naturalWidth, (HORIZON_Y + 80) / bg.naturalHeight);
+    const w = bg.naturalWidth * scale;
+    const h = bg.naturalHeight * scale;
+    ctx.drawImage(bg, (VIEW.width - w) / 2, 0, w, h);
+    ctx.fillStyle = 'rgba(8, 15, 30, 0.35)';
+    ctx.fillRect(0, 0, VIEW.width, HORIZON_Y + 80);
+  }
 }
 
+function drawRoad(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  const bottomZ = -((VIEW.height - HORIZON_Y) / (PLAYER_Y - HORIZON_Y) - 1) * 420 * PX; // 화면 맨 아래에 해당하는 z
+  const farLeft = project(ROAD_LEFT, FIELD.depth * 3);
+  const nearLeft = project(ROAD_LEFT, bottomZ);
+  const nearRight = project(ROAD_RIGHT, bottomZ);
+  const farRight = project(ROAD_RIGHT, FIELD.depth * 3);
+  const gradient = ctx.createLinearGradient(0, HORIZON_Y, 0, VIEW.height);
+  gradient.addColorStop(0, PALETTE.roadFar);
+  gradient.addColorStop(1, PALETTE.road);
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.moveTo(farLeft.x, farLeft.y);
+  ctx.lineTo(farRight.x, farRight.y);
+  ctx.lineTo(nearRight.x, nearRight.y);
+  ctx.lineTo(nearLeft.x, nearLeft.y);
+  ctx.closePath();
+  ctx.fill();
+  // 양옆 난간
+  ctx.strokeStyle = PALETTE.rail;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(farLeft.x, farLeft.y);
+  ctx.lineTo(nearLeft.x, nearLeft.y);
+  ctx.moveTo(farRight.x, farRight.y);
+  ctx.lineTo(nearRight.x, nearRight.y);
+  ctx.stroke();
+  // 차선: 달린 거리만큼 뒤로 흘러간다
+  const offset = (scene.state.scroll / PX) % LANE_DASH;
+  ctx.strokeStyle = PALETTE.lane;
+  for (const lane of [VIEW.width / 3, (VIEW.width * 2) / 3]) {
+    for (let z = -offset - LANE_DASH; z < FIELD.depth / PX; z += LANE_DASH) {
+      const a = project(lane * PX, Math.max(z, -150) * PX);
+      const b = project(lane * PX, Math.max(z + LANE_DASH * 0.45, -150) * PX);
+      if (b.y <= a.y && b.y >= HORIZON_Y) {
+        ctx.lineWidth = Math.max(1, 4 * a.scale);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------- 물체
+
 function drawGate(ctx: CanvasRenderingContext2D, gate: Gate): void {
-  const y = gate.y / PX;
-  const height = 40;
-  const halves: [GateEffect, number][] = [
-    [gate.left, 4],
-    [gate.right, VIEW.width / 2 + 2],
+  const left = project(ROAD_LEFT, gate.z);
+  const mid = project(FIELD.width / 2, gate.z);
+  const right = project(ROAD_RIGHT, gate.z);
+  const height = 62 * mid.scale;
+  const halves: [GateEffect, number, number][] = [
+    [gate.left, left.x, mid.x],
+    [gate.right, mid.x, right.x],
   ];
-  halves.forEach(([effectOf, x], index) => {
-    const w = VIEW.width / 2 - 6;
-    const trap = isTrap(effectOf.kind);
-    ctx.fillStyle = trap ? PALETTE.gateTrap : effectOf.kind === 'shotsMul' ? PALETTE.gateMul : PALETTE.gateGood;
-    ctx.fillRect(x, y - height / 2, w, height);
-    ctx.strokeStyle = trap ? '#f87171' : effectOf.kind === 'shotsMul' ? '#facc15' : '#38bdf8';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y - height / 2, w, height);
-    const title = pick(GATE_TITLES[effectOf.kind], gate.id + index);
-    text(ctx, title, x + w / 2, y - 11, 11, '#e2e8f0', { weight: '600' });
-    text(ctx, gateValueText(effectOf.kind, effectOf.value), x + w / 2, y + 8, 20, trap ? COLORS.trap : '#fff');
+  halves.forEach(([chosen, x0, x1], index) => {
+    const trap = isTrap(chosen.kind);
+    ctx.fillStyle = trap ? PALETTE.gateTrap : chosen.kind === 'shotsMul' ? PALETTE.gateMul : PALETTE.gateGood;
+    ctx.fillRect(x0 + 2, mid.y - height, x1 - x0 - 4, height);
+    ctx.strokeStyle = trap ? '#f87171' : chosen.kind === 'shotsMul' ? '#facc15' : '#38bdf8';
+    ctx.lineWidth = Math.max(1, 3 * mid.scale);
+    ctx.strokeRect(x0 + 2, mid.y - height, x1 - x0 - 4, height);
+    const cx = (x0 + x1) / 2;
+    text(ctx, pick(GATE_TITLES[chosen.kind], gate.id + index), cx, mid.y - height * 0.74, Math.max(7, 13 * mid.scale), '#e2e8f0', { weight: '600' });
+    text(ctx, gateValueText(chosen.kind, chosen.value), cx, mid.y - height * 0.34, Math.max(9, 26 * mid.scale), trap ? COLORS.trap : '#fff');
   });
 }
 
-function drawEnemy(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): void {
-  const cx = enemy.x / PX;
-  const cy = enemy.y / PX;
-  const w = enemy.w / PX;
-  const h = enemy.h / PX;
-  const key: SpriteKey = enemy.kind === 'mini' ? 'slime' : enemy.kind;
-  ctx.save();
-  if (enemy.kind === 'mini') {
-    ctx.globalAlpha = 0.95;
+function drawBoulder(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+  const at = project(enemy.x, enemy.z);
+  const radius = (enemy.w / PX / 2) * at.scale;
+  const cy = at.y - radius * 0.85;
+  shadow(ctx, at.x, at.y, radius * 2);
+  const gradient = ctx.createRadialGradient(at.x - radius * 0.35, cy - radius * 0.4, radius * 0.1, at.x, cy, radius);
+  gradient.addColorStop(0, '#ffd08a');
+  gradient.addColorStop(0.45, '#fb923c');
+  gradient.addColorStop(1, '#c2410c');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(at.x, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+  // 꼭지와 잎
+  ctx.fillStyle = '#4d7c0f';
+  ctx.beginPath();
+  ctx.ellipse(at.x + radius * 0.12, cy - radius * 0.97, radius * 0.22, radius * 0.11, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  if (enemy.flash > 0) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.beginPath();
+    ctx.arc(at.x, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
   }
+  // 체력 숫자: 줄어드는 숫자가 "내 화력과의 승부" 를 보여 준다
+  text(ctx, String(Math.max(0, enemy.hp)), at.x, cy + radius * 0.1, Math.max(10, radius * 0.62), '#fff');
+}
+
+function drawActor(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): void {
+  const at = project(enemy.x, enemy.z);
+  const key: SpriteKey = enemy.kind === 'brute' ? 'slime' : enemy.kind === 'boss' ? 'boss' : 'swarm';
+  const base = enemy.kind === 'brute' ? SIZE.brute : enemy.kind === 'boss' ? enemy.w / PX : SIZE.grunt;
+  const w = base * at.scale;
+  const hop = enemy.kind === 'boss' ? 0 : Math.abs(Math.sin((scene.state.tick + enemy.seed) * 0.3)) * 4 * at.scale;
+  shadow(ctx, at.x, at.y, w * 0.9);
+  ctx.save();
   if (enemy.shielded > 0) {
     ctx.globalAlpha = 0.7;
   }
-  sprite(ctx, scene.sprites, key, cx, cy, w * 1.15, h * 1.15);
+  sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w);
   if (enemy.flash > 0) {
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.55;
-    sprite(ctx, scene.sprites, key, cx, cy, w * 1.15, h * 1.15);
+    ctx.globalAlpha = 0.5;
+    sprite(ctx, scene.sprites, key, at.x, at.y - w * 0.5 - hop, w, w);
   }
   ctx.restore();
   if (enemy.shielded > 0) {
     ctx.strokeStyle = '#fde047';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.ellipse(cx, cy, w * 0.62, h * 0.62, 0, 0, Math.PI * 2);
+    ctx.ellipse(at.x, at.y - w * 0.5, w * 0.6, w * 0.6, 0, 0, Math.PI * 2);
     ctx.stroke();
   }
-  if (enemy.kind !== 'boss' && enemy.kind !== 'swarm' && enemy.kind !== 'mini' && enemy.hp < enemy.maxHp) {
-    ctx.fillStyle = PALETTE.hpBack;
-    ctx.fillRect(cx - w / 2, cy - h / 2 - 7, w, 4);
-    ctx.fillStyle = PALETTE.hpFill;
-    ctx.fillRect(cx - w / 2, cy - h / 2 - 7, (w * enemy.hp) / enemy.maxHp, 4);
+  if (enemy.kind === 'brute') {
+    text(ctx, String(Math.max(0, enemy.hp)), at.x, at.y - w * 1.08, Math.max(8, 15 * at.scale), '#fff');
   }
 }
 
-function drawDumbbell(ctx: CanvasRenderingContext2D, x: number, y: number, tick: number): void {
+function drawDumbbell(ctx: CanvasRenderingContext2D, x: number, z: number, tick: number): void {
+  const at = project(x, z);
+  const size = SIZE.dumbbell * at.scale;
   ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(tick * 0.18);
+  ctx.translate(at.x, at.y - size * 0.6);
+  ctx.rotate(tick * 0.2);
   ctx.fillStyle = '#475569';
-  ctx.fillRect(-3, -14, 6, 28);
+  ctx.fillRect(-size * 0.1, -size * 0.5, size * 0.2, size);
   ctx.fillStyle = '#1e293b';
-  ctx.fillRect(-9, -16, 18, 7);
-  ctx.fillRect(-9, 9, 18, 7);
+  ctx.fillRect(-size * 0.32, -size * 0.55, size * 0.64, size * 0.22);
+  ctx.fillRect(-size * 0.32, size * 0.33, size * 0.64, size * 0.22);
   ctx.restore();
 }
 
 function drawPlayer(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const { state } = scene;
   const p = state.player;
-  const cx = p.x / PX;
-  const cy = PLAYER.y / PX;
-  const w = PLAYER.width / PX;
-  const h = PLAYER.height / PX;
+  const at = project(p.x, 0);
   const pulse = 1 + Math.sin(state.tick * 0.2) * 0.04;
+  // 발밑의 초록 원(내 위치)
+  ctx.strokeStyle = 'rgba(74, 222, 128, 0.9)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(at.x, at.y, 30, 11, 0, 0, Math.PI * 2);
+  ctx.stroke();
   if (p.star > 0) {
     ctx.fillStyle = `rgba(253, 224, 71, ${0.25 + Math.sin(state.tick * 0.3) * 0.1})`;
     ctx.beginPath();
-    ctx.arc(cx, cy, 34 * pulse, 0, Math.PI * 2);
+    ctx.arc(at.x, at.y - 30, 40 * pulse, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.save();
   if (p.invuln > 0 && Math.floor(state.tick / 4) % 2 === 0) {
     ctx.globalAlpha = 0.4;
   }
-  const bob = state.over ? 0 : Math.sin(state.tick * 0.25) * 1.5;
-  sprite(ctx, scene.sprites, 'hero', cx, cy + bob, w * 1.5, h * 1.5);
+  const run = state.over ? 0 : Math.abs(Math.sin(state.tick * 0.35)) * 5;
+  sprite(ctx, scene.sprites, 'hero', at.x, at.y - SIZE.hero * 0.5 - run, SIZE.hero, SIZE.hero);
   ctx.restore();
   for (let i = 0; i < p.shield; i += 1) {
     ctx.strokeStyle = i === 0 ? 'rgba(251, 146, 60, 0.95)' : 'rgba(253, 186, 116, 0.8)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(cx, cy, 28 + i * 5, 0, Math.PI * 2);
+    ctx.arc(at.x, at.y - 30, 36 + i * 5, 0, Math.PI * 2);
     ctx.stroke();
   }
 }
 
+// ---------------------------------------------------------------------------------------------- 화면 위 정보
+
 function drawHud(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const { state, best } = scene;
-  text(ctx, String(state.score), 12, 20, 24, '#fff', { align: 'left' });
-  text(ctx, `WAVE ${state.wave}`, VIEW.width - 12, 16, 15, '#cbd5e1', { align: 'right' });
+  const p = state.player;
+  text(ctx, String(state.score), 12, 22, 26, '#fff', { align: 'left' });
+  text(ctx, `STAGE ${state.stage}`, VIEW.width - 12, 18, 15, '#cbd5e1', { align: 'right' });
   if (best !== null) {
-    text(ctx, `BEST ${best}`, VIEW.width - 12, 36, 12, '#94a3b8', { align: 'right', weight: '600' });
+    text(ctx, `BEST ${best}`, VIEW.width - 12, 38, 12, '#94a3b8', { align: 'right', weight: '600' });
   }
   if (state.combo >= 3) {
-    text(ctx, `COMBO ${state.combo}  ×${comboMultiplier(state.combo)}`, 12, 44, 13, COLORS.gold, { align: 'left' });
+    text(ctx, `COMBO ${state.combo}  ×${comboMultiplier(state.combo)}`, 12, 48, 13, COLORS.gold, { align: 'left' });
   }
-  const p = state.player;
+  // 내 화력: 화면의 체력 숫자와 견주는 기준
+  text(ctx, `화력 ${firepower(p)}`, 12, VIEW.height - 24, 22, '#86efac', { align: 'left' });
+  text(ctx, `${p.shots}발 × 공격 ${p.damage}`, 12, VIEW.height - 6, 11, '#cbd5e1', { align: 'left', weight: '600' });
   const icons: [string, number, number][] = [
     ['🍗', p.chicken, 360],
     ['💰', p.cash, 480],
     ['⭐', p.star, 300],
+    ['🎯', p.pierce, 600],
   ];
-  let x = 12;
+  let x = VIEW.width - 12;
   for (const [emoji, ticks, max] of icons) {
     if (ticks <= 0) {
       continue;
     }
-    ctx.font = `16px ${FONT}`;
-    ctx.textAlign = 'left';
-    ctx.fillText(emoji, x, VIEW.height - 40);
+    ctx.font = `18px ${FONT}`;
+    ctx.textAlign = 'right';
+    ctx.fillText(emoji, x, VIEW.height - 28);
     ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
-    ctx.fillRect(x, VIEW.height - 26, 22, 3);
+    ctx.fillRect(x - 22, VIEW.height - 16, 22, 3);
     ctx.fillStyle = COLORS.gold;
-    ctx.fillRect(x, VIEW.height - 26, (22 * Math.min(ticks, max)) / max, 3);
-    x += 30;
+    ctx.fillRect(x - 22, VIEW.height - 16, (22 * Math.min(ticks, max)) / max, 3);
+    x -= 34;
   }
-  text(ctx, `🔫 ${p.shots}발 · 공격 ${p.damage}`, VIEW.width - 12, VIEW.height - 14, 12, '#cbd5e1', { align: 'right', weight: '600' });
   const boss = state.enemies.find((e) => e.kind === 'boss');
   if (boss) {
     const w = VIEW.width - 80;
     ctx.fillStyle = PALETTE.hpBack;
-    ctx.fillRect(40, 60, w, 8);
+    ctx.fillRect(40, 62, w, 12);
     ctx.fillStyle = boss.shielded > 0 ? '#fde047' : PALETTE.hpFill;
-    ctx.fillRect(40, 60, (w * Math.max(0, boss.hp)) / boss.maxHp, 8);
-    text(ctx, BOSS_NAME, VIEW.width / 2, 78, 12, '#fff');
+    ctx.fillRect(40, 62, (w * Math.max(0, boss.hp)) / boss.maxHp, 12);
+    text(ctx, `${BOSS_NAME}  ${Math.max(0, boss.hp)}`, VIEW.width / 2, 90, 15, '#fff');
   }
 }
 
@@ -345,21 +401,22 @@ function drawOverlay(ctx: CanvasRenderingContext2D, scene: Scene): void {
   ctx.fillStyle = 'rgba(8, 15, 30, 0.78)';
   ctx.fillRect(0, 0, VIEW.width, VIEW.height);
   if (phase === 'idle') {
-    text(ctx, '귤 폭격', VIEW.width / 2, 200, 40, COLORS.orange);
-    text(ctx, '도로롱', VIEW.width / 2, 246, 40, '#f9a8d4');
-    text(ctx, scene.touch ? '화면을 좌우로 끌어서 움직여요' : '← → 또는 A D 로 움직여요', VIEW.width / 2, 320, 15, '#e2e8f0', { weight: '600' });
-    text(ctx, '총알은 알아서 나가요', VIEW.width / 2, 346, 15, '#e2e8f0', { weight: '600' });
-    text(ctx, '한 번 맞으면 끝! 귤이 있으면 한 번은 막아요', VIEW.width / 2, 372, 13, '#fca5a5', { weight: '600' });
-    text(ctx, scene.touch ? '탭해서 시작' : '스페이스 · 클릭으로 시작', VIEW.width / 2, 430, 20, '#fff');
-    text(ctx, `TIP  ${scene.tip}`, VIEW.width / 2, 520, 13, '#94a3b8', { weight: '600' });
+    text(ctx, '귤 폭격', VIEW.width / 2, 190, 42, COLORS.orange);
+    text(ctx, '도로롱', VIEW.width / 2, 238, 42, '#f9a8d4');
+    text(ctx, scene.touch ? '화면을 좌우로 끌어서 움직여요' : '← → 또는 A D 로 움직여요', VIEW.width / 2, 312, 15, '#e2e8f0', { weight: '600' });
+    text(ctx, '총알은 알아서 나가요', VIEW.width / 2, 338, 15, '#e2e8f0', { weight: '600' });
+    text(ctx, '내 화력보다 큰 숫자는 피하고, 작은 숫자는 쏴서 부숴요', VIEW.width / 2, 366, 12, '#fde68a', { weight: '600' });
+    text(ctx, '한 번 맞으면 끝! 귤이 있으면 한 번은 막아요', VIEW.width / 2, 388, 12, '#fca5a5', { weight: '600' });
+    text(ctx, scene.touch ? '탭해서 시작' : '스페이스 · 클릭으로 시작', VIEW.width / 2, 440, 20, '#fff');
+    text(ctx, `TIP  ${scene.tip}`, VIEW.width / 2, 530, 12, '#94a3b8', { weight: '600' });
     return;
   }
-  text(ctx, 'GAME OVER', VIEW.width / 2, 190, 36, '#fca5a5');
-  text(ctx, scene.overLine, VIEW.width / 2, 236, 16, '#e2e8f0', { weight: '600' });
-  text(ctx, String(state.score), VIEW.width / 2, 300, 44, '#fff');
-  text(ctx, rankTitle(state.score), VIEW.width / 2, 348, 20, COLORS.gold);
-  text(ctx, `WAVE ${state.wave} · 처치 ${state.kills}`, VIEW.width / 2, 384, 14, '#cbd5e1', { weight: '600' });
-  text(ctx, scene.touch ? '탭해서 다시 시작' : '스페이스 · 클릭으로 다시 시작', VIEW.width / 2, 450, 18, '#fff');
+  text(ctx, 'GAME OVER', VIEW.width / 2, 180, 36, '#fca5a5');
+  text(ctx, scene.overLine, VIEW.width / 2, 226, 16, '#e2e8f0', { weight: '600' });
+  text(ctx, String(state.score), VIEW.width / 2, 292, 46, '#fff');
+  text(ctx, rankTitle(state.score), VIEW.width / 2, 340, 20, COLORS.gold);
+  text(ctx, `STAGE ${state.stage} · 처치 ${state.kills}`, VIEW.width / 2, 376, 14, '#cbd5e1', { weight: '600' });
+  text(ctx, scene.touch ? '탭해서 다시 시작' : '스페이스 · 클릭으로 다시 시작', VIEW.width / 2, 440, 18, '#fff');
 }
 
 function drawBanner(ctx: CanvasRenderingContext2D, scene: Scene): void {
@@ -372,12 +429,14 @@ function drawBanner(ctx: CanvasRenderingContext2D, scene: Scene): void {
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
   const big = banner.sub !== '';
-  text(ctx, banner.title, VIEW.width / 2, big ? 150 : 130, big ? 30 : 26, big ? COLORS.orange : '#e2e8f0');
+  text(ctx, banner.title, VIEW.width / 2, big ? 170 : 150, big ? 30 : 26, big ? COLORS.orange : '#e2e8f0');
   if (big) {
-    text(ctx, `"${banner.sub}"`, VIEW.width / 2, 186, 16, '#fff', { weight: '600' });
+    text(ctx, `"${banner.sub}"`, VIEW.width / 2, 206, 16, '#fff', { weight: '600' });
   }
   ctx.restore();
 }
+
+type Drawable = { z: number; draw: () => void };
 
 export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const { state, fx } = scene;
@@ -386,24 +445,40 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
     const m = fx.shake * 0.5;
     ctx.translate(Math.sin(state.tick * 7) * m, Math.cos(state.tick * 9) * m);
   }
-  drawBackground(ctx, scene);
-  state.gates.forEach((gate) => drawGate(ctx, gate));
-  state.items.forEach((item) => {
-    const bob = Math.sin((state.tick + item.id * 7) * 0.15) * 3;
-    sprite(ctx, scene.sprites, ITEM_SPRITE[item.kind], item.x / PX, item.y / PX + bob, 28, 28);
-  });
-  state.enemies.forEach((enemy) => drawEnemy(ctx, scene, enemy));
-  state.enemyShots.forEach((shot) => drawDumbbell(ctx, shot.x / PX, shot.y / PX, state.tick));
-  state.bullets.forEach((bullet) => {
-    ctx.fillStyle = '#fb923c';
-    ctx.beginPath();
-    ctx.ellipse(bullet.x / PX, bullet.y / PX, 4, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fed7aa';
-    ctx.beginPath();
-    ctx.ellipse(bullet.x / PX - 1, bullet.y / PX - 2, 1.5, 2.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-  });
+  drawBackdrop(ctx, scene);
+  drawRoad(ctx, scene);
+
+  // 먼 것부터 그린다(가까운 것이 먼 것을 가린다)
+  const drawables: Drawable[] = [];
+  state.gates.forEach((gate) => drawables.push({ z: gate.z, draw: () => drawGate(ctx, gate) }));
+  state.items.forEach((item) =>
+    drawables.push({
+      z: item.z,
+      draw: () => {
+        const at = project(item.x, item.z);
+        const size = SIZE.item * at.scale;
+        const bob = Math.sin((state.tick + item.id * 7) * 0.15) * 3 * at.scale;
+        shadow(ctx, at.x, at.y, size);
+        sprite(ctx, scene.sprites, item.kind, at.x, at.y - size * 0.7 + bob, size, size);
+      },
+    }),
+  );
+  state.enemies.forEach((enemy) => drawables.push({ z: enemy.z, draw: () => (enemy.kind === 'boulder' ? drawBoulder(ctx, enemy) : drawActor(ctx, scene, enemy)) }));
+  state.dumbbells.forEach((d) => drawables.push({ z: d.z, draw: () => drawDumbbell(ctx, d.x, d.z, state.tick) }));
+  state.bullets.forEach((bullet) =>
+    drawables.push({
+      z: bullet.z,
+      draw: () => {
+        const at = project(bullet.x, bullet.z);
+        ctx.fillStyle = bullet.pierce > 0 ? '#fde047' : '#fb923c';
+        ctx.beginPath();
+        ctx.ellipse(at.x, at.y - 22 * at.scale, SIZE.bullet * 0.7 * at.scale, SIZE.bullet * at.scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      },
+    }),
+  );
+  drawables.sort((a, b) => b.z - a.z).forEach((d) => d.draw());
+
   drawPlayer(ctx, scene);
   fx.particles.forEach((p) => {
     ctx.globalAlpha = Math.max(0, 1 - p.age / p.life);

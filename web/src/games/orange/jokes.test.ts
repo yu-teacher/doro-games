@@ -41,16 +41,17 @@ describe('칭호', () => {
 });
 
 describe('quipFor', () => {
-  it('아이템·보호막·엘리트·슬라임에는 대사가 있고 보스 처치는 따로 다룬다', () => {
-    expect(quipFor({ t: 'item', kind: 'orange', x: 0, y: 0 }, 0)).not.toBeNull();
-    expect(quipFor({ t: 'shieldBreak', x: 0, y: 0 }, 0)).not.toBeNull();
-    expect(quipFor({ t: 'kill', kind: 'elite', x: 0, y: 0, points: 1 }, 0)).not.toBeNull();
-    expect(quipFor({ t: 'kill', kind: 'slime', x: 0, y: 0, points: 1 }, 0)).not.toBeNull();
-    expect(quipFor({ t: 'kill', kind: 'boss', x: 0, y: 0, points: 1 }, 0)).toBeNull();
+  it('아이템·보호막·덩치·귤 덩어리에는 대사가 있고 보스 처치는 따로 다룬다', () => {
+    expect(quipFor({ t: 'item', kind: 'orange', x: 0 }, 0)).not.toBeNull();
+    expect(quipFor({ t: 'item', kind: 'bomb', x: 0 }, 0)).not.toBeNull();
+    expect(quipFor({ t: 'shieldBreak', x: 0 }, 0)).not.toBeNull();
+    expect(quipFor({ t: 'kill', kind: 'brute', x: 0, z: 0, points: 1 }, 0)).not.toBeNull();
+    expect(quipFor({ t: 'kill', kind: 'boulder', x: 0, z: 0, points: 1 }, 0)).not.toBeNull();
+    expect(quipFor({ t: 'kill', kind: 'boss', x: 0, z: 0, points: 1 }, 0)).toBeNull();
   });
 
   it('보통 적은 가끔만 한마디 한다(화면이 말풍선으로 가득 차지 않게)', () => {
-    const spoken = [0, 1, 2, 3, 4, 5].filter((i) => quipFor({ t: 'kill', kind: 'swarm', x: 0, y: 0, points: 1 }, i) !== null);
+    const spoken = [0, 1, 2, 3, 4, 5].filter((i) => quipFor({ t: 'kill', kind: 'grunt', x: 0, z: 0, points: 1 }, i) !== null);
     expect(spoken.length).toBeLessThan(6);
     expect(spoken.length).toBeGreaterThan(0);
   });

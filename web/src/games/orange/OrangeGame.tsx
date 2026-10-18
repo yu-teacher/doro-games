@@ -4,7 +4,8 @@ import { loadSprites, type Sprites } from './assets';
 import { applyEvent, createEffects, updateEffects, type Effects } from './effects';
 import { FIELD, STEP_MS, createState, step, type OrangeState } from './engine';
 import { GAME_OVER_LINES, TIPS, pick } from './jokes';
-import { VIEW, drawScene, type Phase } from './render';
+import { drawScene, type Phase } from './render';
+import { VIEW } from './view';
 
 /** 그림 파일이 있는 곳. 운영에서는 게이트웨이가 이 경로를 객체 저장소로 연결한다. */
 const ASSET_BASE = `${import.meta.env.BASE_URL}assets/`;

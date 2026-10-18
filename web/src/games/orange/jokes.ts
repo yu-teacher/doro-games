@@ -43,15 +43,19 @@ export function isTrap(kind: GateKind): boolean {
 
 /** 적을 쓰러뜨릴 때 떠오르는 짧은 말 */
 export const KILL_QUIPS: readonly string[] = ['도로롱~', 'Doro!', '귤 내놔', '퍽!', '으악', '굿', 'Nice귤', '헛!', '꾹', '귤벌', '쾅', '아야'];
-export const ELITE_QUIPS: readonly string[] = ['엘리트 컷!', '비싼 놈이었다', '이게 귤 맛이다'];
-export const SLIME_QUIPS: readonly string[] = ['갈라졌다!', '둘이 됐다', '분열!'];
+export const BRUTE_QUIPS: readonly string[] = ['덩치 컷!', '비싼 놈이었다', '이게 귤 맛이다'];
+export const BOULDER_QUIPS: readonly string[] = ['귤즙 팡!', '큰 귤이 터졌다', '귤 폭발!', '새콤하다'];
 
-export const ITEM_QUIPS: Record<'orange' | 'chicken' | 'cash' | 'star', readonly string[]> = {
+export const ITEM_QUIPS: Record<'orange' | 'chicken' | 'cash' | 'star' | 'pierce' | 'bomb', readonly string[]> = {
   orange: ['귤 보호막!', '귤 한 개 장전', '든든하다'],
   chicken: ['치킨 버프!', '닭다리 파워', '손이 안 보인다'],
   cash: ['월급 두 배!', '통장이 웃는다', '돈다발 획득'],
   star: ['무적 도로롱!', '별을 먹었다', '지금은 못 건드려'],
+  pierce: ['관통 귤!', '다 뚫어 버려', '귤이 안 멈춘다'],
+  bomb: ['폭탄 장전!', '쾅 할 시간', '귤 폭탄 획득'],
 };
+
+export const BOMB_QUIPS: readonly string[] = ['귤 폭탄 투하!', '펑! 귤즙', '과즙 폭발', '새콤달콤 폭격'];
 
 export const SHIELD_BREAK_QUIPS: readonly string[] = ['귤이 대신 맞았다!', '귤 터짐!', '한 번은 봐줄게'];
 
@@ -60,9 +64,8 @@ export const BOSS_INTRO: readonly string[] = ['귤은 내 거다', '오늘 하�
 export const BOSS_SHIELD: readonly string[] = ['근육 방어!', '지금은 못 때려', '대흉근 막기'];
 export const BOSS_DOWN: readonly string[] = ['단백질이… 부족했나…', '다음엔 닭가슴살 먹고 온다', '근손실이…', '귤은… 너 가져라…'];
 
-export const GAME_OVER_LINES: Record<'touch' | 'breach' | 'shot', readonly string[]> = {
-  touch: ['부딪혔다!', '도로롱은 눈물을 닦았다', '한 방이면 끝나는 게 인생', '다음엔 보호막부터 챙기자'],
-  breach: ['귤을 놓쳤다…', '이 귤은 훔칠 수 없었다…(훔쳐갔다)', '귤 도둑에게 당했다', '귤 상자가 털렸다'],
+export const GAME_OVER_LINES: Record<'touch' | 'shot', readonly string[]> = {
+  touch: ['부딪혔다!', '도로롱은 눈물을 닦았다', '한 방이면 끝나는 게 인생', '다음엔 보호막부터 챙기자', '귤 도둑에게 밟혔다', '큰 귤은 피하는 게 상책'],
   shot: ['덤벨에 맞았다', '3대 500 덤벨이었다', '도로롱이 이불 속으로 들어갔다', '근육의 힘은 위대했다'],
 };
 
@@ -87,12 +90,13 @@ export function rankTitle(score: number): string {
 }
 
 export const TIPS: readonly string[] = [
-  '게이트를 쏘면 숫자가 올라가요',
+  '게이트를 겨눠서 쏘면 숫자가 조금 올라가요',
   '귤을 먹으면 한 번은 막아 줘요',
   '함정 게이트는 피하는 게 상책',
   '연속으로 잡으면 점수 배율이 올라요',
-  '적이 바닥에 닿아도 끝이에요',
-  '10웨이브마다 근육 도로롱이 와요',
+  '큰 숫자는 피하고, 작은 숫자는 쏴서 부숴요',
+  '10스테이지마다 근육 도로롱이 와요',
+  '내 화력보다 큰 숫자는 비켜 가요',
   '치킨을 먹으면 손이 안 보여요',
 ];
 
@@ -103,11 +107,11 @@ export function quipFor(event: GameEvent, pickIndex: number): string | null {
       if (event.kind === 'boss') {
         return null;
       }
-      if (event.kind === 'elite') {
-        return pick(ELITE_QUIPS, pickIndex);
+      if (event.kind === 'brute') {
+        return pick(BRUTE_QUIPS, pickIndex);
       }
-      if (event.kind === 'slime') {
-        return pick(SLIME_QUIPS, pickIndex);
+      if (event.kind === 'boulder') {
+        return pick(BOULDER_QUIPS, pickIndex);
       }
       return pickIndex % 3 === 0 ? pick(KILL_QUIPS, pickIndex) : null;
     case 'item':

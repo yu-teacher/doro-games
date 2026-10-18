@@ -4,9 +4,9 @@
  * 그래서 그림이 없는 환경(테스트, 새로 받은 개발 환경)에서도 게임은 항상 돈다.
  */
 
-export type SpriteKey = 'hero' | 'swarm' | 'slime' | 'wall' | 'elite' | 'boss' | 'orange' | 'chicken' | 'cash' | 'star' | 'bg';
+export type SpriteKey = 'hero' | 'swarm' | 'slime' | 'boss' | 'orange' | 'chicken' | 'cash' | 'star' | 'pierce' | 'bomb' | 'bg';
 
-export const SPRITE_KEYS: readonly SpriteKey[] = ['hero', 'swarm', 'slime', 'wall', 'elite', 'boss', 'orange', 'chicken', 'cash', 'star', 'bg'];
+export const SPRITE_KEYS: readonly SpriteKey[] = ['hero', 'swarm', 'slime', 'boss', 'orange', 'chicken', 'cash', 'star', 'pierce', 'bomb', 'bg'];
 
 export interface Manifest {
   version: number;

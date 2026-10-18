@@ -1,11 +1,14 @@
 /**
- * 「귤 폭격 도로롱」의 게임 규칙. 화면과 분리된 순수 로직이다.
+ * 「귤 폭격 도로롱」의 게임 규칙(러너 시점). 화면과 분리된 순수 로직이다.
  *
- * - **정수만 쓴다.** 좌표는 1px = PX(100) 단위의 정수이고 나눗셈은 항상 내림이다. 부동소수점이 없어서 같은 시드와 같은 입력이면
+ * - 도로롱은 도로를 따라 앞으로 달리고(자동), 좌우로만 움직이며 앞으로 귤 탄을 쏜다(자동).
+ * - 세계는 가로 x 와 깊이 z 로 나뉜다. z=0 이 도로롱이 서 있는 곳이고, 멀수록 z 가 크다. 모든 것이 z 가 줄어드는 쪽(도로롱 쪽)으로 다가온다.
+ *   원근(멀수록 작게)은 그리는 쪽이 계산한다. 엔진에는 없다.
+ * - **정수만 쓴다.** 좌표는 1px = PX(100) 단위의 정수이고 나눗셈은 내림이다. 부동소수점이 없어서 같은 시드와 같은 입력이면
  *   어디서 돌려도(브라우저, 서버의 재생 검증) 똑같은 결과가 나온다.
  * - 한 번의 {@link step} 은 정확히 한 프레임(1/60 초)이다.
- * - 한 방 컷: 한 번 맞으면 끝이다. 귤(보호막)이 있으면 한 번은 막는다.
- * - 화면 효과(말풍선, 반짝임)는 여기서 정하지 않는다. 엔진은 {@link GameEvent} 만 내보내고, 연출은 화면이 맡는다.
+ * - 한 방 컷: 부딪히거나 덤벨에 맞으면 끝이다. 귤(보호막)이 있으면 한 번은 막는다.
+ * - 화면 효과는 여기서 정하지 않는다. 엔진은 {@link GameEvent} 만 내보낸다.
  */
 
 export const FPS = 60;
@@ -15,89 +18,84 @@ export const STEP_MS = 1000 / FPS;
 export const PX = 100;
 export const px = (n: number): number => Math.round(n * PX);
 
-export const FIELD = { width: px(360), height: px(640) } as const;
+export const FIELD = { width: px(360), depth: px(1100) } as const;
 
 export const PLAYER = {
-  width: px(36),
-  height: px(40),
-  /** 맞았는지 따질 때는 눈에 보이는 몸보다 작게 쓴다 */
+  width: px(34),
+  /** 맞았는지 따질 때는 눈에 보이는 몸보다 좁게 쓴다 */
   hitWidth: px(22),
-  hitHeight: px(26),
-  y: px(572),
+  pickupWidth: px(30),
+  /** 부딪힘을 따질 때 도로롱이 차지하는 깊이(앞뒤 두께) */
+  depth: px(20),
   speed: px(8),
-  startShots: 2,
+  startShots: 3,
   startInterval: 12,
-  startDamage: 1,
-  maxShots: 16,
-  minInterval: 4,
-  maxDamage: 16,
+  startDamage: 3,
+  maxShots: 12,
+  maxDamage: 20,
+  minInterval: 5,
   maxShield: 2,
   invulnTicksAfterShield: 60,
 } as const;
 
-const BULLET = { width: px(6), height: px(14), speed: px(14), fanStep: 55, maxSpan: px(120), spacing: px(7) } as const;
+const BULLET = { width: px(6), depth: px(10), speed: px(11), fanStep: 28, maxSpan: px(110), spacing: px(7), pierceHits: 2 } as const;
 
-const WAVE = {
-  /** 줄 사이 간격(틱): 웨이브가 올라가면 촘촘해진다 */
-  rowGapStart: 70,
-  rowGapMin: 28,
-  baseRows: 4,
-  maxExtraRows: 6,
-  tail: 150,
-  gateDelay: 90,
+const RUN = { base: px(1.6), perStage: px(0.04), maxBonus: px(1.0) } as const;
+
+const STAGE = {
+  length: px(900),
   bossEvery: 10,
-  bossEnterTick: 30,
   afterBoss: 150,
-  lanes: 6,
-  laneWidth: px(60),
+  lanes: [px(70), px(180), px(290)],
 } as const;
 
 const GATE = {
-  height: px(40),
-  speed: 120,
+  depth: px(24),
   /** 총알을 이 횟수만큼 맞을 때마다 + 계열 값이 1 오른다(총알 수는 빨리, 공격력·연사는 느리게) */
-  hitsPerStepShots: 8,
-  hitsPerStepOther: 16,
-  /** 쏴서 키울 수 있는 최대 증가량(원래 값 기준) */
-  maxGain: 8,
+  hitsPerStepShots: 30,
+  hitsPerStepOther: 40,
+  /** 쏴서 키울 수 있는 최대 증가량(원래 값 기준). 접근하는 내내 겨눠서 쏴야 닿는 정도 */
+  maxGain: 3,
 } as const;
 
-const ITEM = { size: px(26), speed: px(1.6), dropPercent: 4, orangeWeight: 40, chickenWeight: 25, cashWeight: 20, starWeight: 15 } as const;
-
-const POWER = { chickenTicks: 360, cashTicks: 480, starTicks: 300 } as const;
+const ITEM = { width: px(26), dropBoulder: 30, dropBrute: 25, dropGrunt: 3 } as const;
+const ITEM_WEIGHTS = { orange: 30, chicken: 18, cash: 12, star: 10, pierce: 15, bomb: 15 } as const;
+const POWER = { chickenTicks: 360, cashTicks: 480, starTicks: 300, pierceTicks: 600 } as const;
+const BOMB = { base: 60, perVolley: 15, range: px(450), bossPercent: 40 } as const;
 
 const COMBO = { window: 90, perStep: 10, maxMultiplier: 5 } as const;
 
-/** 종류별 기본 값. hp 는 웨이브에 따라 커진다(hpScale). */
+/** 종류별 크기·속도·점수. 체력은 기대 화력(expectedDps)에서 정한다. */
 const ENEMY = {
-  swarm: { w: px(30), h: px(30), hp: 3, vy: 120, points: 10 },
-  mini: { w: px(22), h: px(22), hp: 4, vy: 130, points: 5 },
-  slime: { w: px(40), h: px(34), hp: 12, vy: 80, points: 40 },
-  wall: { w: px(120), h: px(36), hp: 40, vy: 55, points: 150 },
-  elite: { w: px(42), h: px(42), hp: 26, vy: 100, points: 200 },
-  boss: { w: px(140), h: px(130), hp: 700, vy: 100, points: 2000 },
+  grunt: { w: px(24), depth: px(16), speed: px(0.7), points: 10 },
+  brute: { w: px(38), depth: px(22), speed: px(0.4), points: 50 },
+  boulder: { w: px(110), depth: px(46), speed: 0, points: 100 },
+  boss: { w: px(150), depth: px(60), speed: px(1.2), points: 2000 },
 } as const;
 
-/** 웨이브마다 체력 배율(%)이 growthPercent 만큼 곱해지고 flat 만큼 더해진다(지수 증가라 어느 시점엔 반드시 못 막게 된다). */
-const SCALE = { growthPercent: 113, flat: 8, speedPerWave: 4, maxSpeedBonus: 160 } as const;
+/** 웨이브(스테이지)마다 체력 배율(%)이 growthPercent 만큼 곱해지고 flat 만큼 더해진다(지수 증가라 어느 시점엔 반드시 못 막게 된다). */
+const SCALE = { growthPercent: 124, flat: 4 } as const;
+/** 스테이지 1 에서 기대하는 초당 피해량. 적의 체력은 이 값에 배율을 곱해 정한다(그래서 화면의 숫자가 "내 화력과의 승부" 가 된다). */
+const BASE_DPS = 45;
 
 const BOSS = {
-  hoverY: px(130),
-  moveSpeed: px(2),
-  throwEvery: 75,
-  throwEveryPhase2: 48,
-  shotSpeed: px(4.6),
-  shotSize: px(22),
+  holdZ: px(340),
+  moveSpeed: px(1.5),
+  throwEvery: 80,
+  throwEveryPhase2: 50,
+  dumbbellSpeed: px(4.4),
+  dumbbellWidth: px(24),
   shieldEvery: 480,
   shieldTicks: 120,
   killBonus: 1000,
-  rewardOranges: 1,
+  seconds: 30,
+  growthPercent: 25,
 } as const;
 
-export const WAVE_BOSS_EVERY = WAVE.bossEvery;
+export const STAGE_BOSS_EVERY = STAGE.bossEvery;
 
 export type EnemyKind = keyof typeof ENEMY;
-export type ItemKind = 'orange' | 'chicken' | 'cash' | 'star';
+export type ItemKind = keyof typeof ITEM_WEIGHTS;
 
 /** 게이트가 하는 일. + 와 × 는 총알 수, rate 는 연사, dmg 는 공격력. 마이너스 쪽(shotsDown, shotsHalf)은 함정이다. */
 export type GateKind = 'shotsUp' | 'shotsMul' | 'rateUp' | 'dmgUp' | 'shotsDown' | 'shotsHalf';
@@ -113,7 +111,7 @@ export interface GateEffect {
 
 export interface Gate {
   id: number;
-  y: number;
+  z: number;
   left: GateEffect;
   right: GateEffect;
   used: boolean;
@@ -122,46 +120,48 @@ export interface Gate {
 export interface Enemy {
   id: number;
   kind: EnemyKind;
-  /** 좌우로 흔들리기 전의 기준 x */
-  baseX: number;
   x: number;
-  y: number;
+  z: number;
   w: number;
-  h: number;
+  depth: number;
   hp: number;
   maxHp: number;
-  vy: number;
-  vx: number;
+  /** 도로롱 쪽으로 스스로 다가오는 속도(세계가 다가오는 속도에 더해진다) */
+  speed: number;
   /** 맞았을 때 하얗게 번쩍이는 남은 틱(그리기용) */
   flash: number;
   /** 보스가 막고 있는 남은 틱 */
   shielded: number;
   born: number;
+  /** 기울어져 보이는 정도(그리기용 고정값) */
+  seed: number;
 }
 
 export interface Bullet {
   id: number;
   x: number;
-  y: number;
+  z: number;
   vx: number;
   damage: number;
-  /** 마지막으로 값을 키워 준 게이트(같은 게이트를 지나는 동안 두 번 세지 않으려고) */
+  /** 더 뚫을 수 있는 적의 수 */
+  pierce: number;
+  /** 마지막으로 값을 키워 준 게이트와 마지막으로 때린 적(같은 대상을 두 번 세지 않으려고) */
   gateId: number;
+  lastHit: number;
 }
 
-export interface EnemyShot {
+export interface Dumbbell {
   id: number;
   x: number;
-  y: number;
+  z: number;
   vx: number;
-  vy: number;
 }
 
 export interface Item {
   id: number;
   kind: ItemKind;
   x: number;
-  y: number;
+  z: number;
 }
 
 export interface Player {
@@ -176,25 +176,31 @@ export interface Player {
   chicken: number;
   cash: number;
   star: number;
+  pierce: number;
 }
 
 interface Spawn {
   at: number;
-  kind: EnemyKind | 'gate';
+  kind: EnemyKind | 'gate' | 'item' | 'crowd';
   x: number;
+  hp?: number;
+  w?: number;
+  count?: number;
+  item?: ItemKind;
   gate?: { left: GateEffect; right: GateEffect };
 }
 
 export type GameEvent =
-  | { t: 'kill'; kind: EnemyKind; x: number; y: number; points: number }
-  | { t: 'gate'; kind: GateKind; value: number; x: number; y: number }
-  | { t: 'item'; kind: ItemKind; x: number; y: number }
-  | { t: 'shieldBreak'; x: number; y: number }
-  | { t: 'wave'; n: number }
+  | { t: 'kill'; kind: EnemyKind; x: number; z: number; points: number }
+  | { t: 'gate'; kind: GateKind; value: number; x: number }
+  | { t: 'item'; kind: ItemKind; x: number }
+  | { t: 'bomb'; x: number }
+  | { t: 'shieldBreak'; x: number }
+  | { t: 'stage'; n: number }
   | { t: 'bossIntro' }
   | { t: 'bossShield'; on: boolean }
-  | { t: 'bossDown'; x: number; y: number }
-  | { t: 'over'; cause: 'touch' | 'breach' | 'shot' };
+  | { t: 'bossDown'; x: number; z: number }
+  | { t: 'over'; cause: 'touch' | 'shot' };
 
 export interface OrangeState {
   tick: number;
@@ -203,12 +209,15 @@ export interface OrangeState {
   player: Player;
   bullets: Bullet[];
   enemies: Enemy[];
-  enemyShots: EnemyShot[];
+  dumbbells: Dumbbell[];
   gates: Gate[];
   items: Item[];
-  wave: number;
-  waveTick: number;
-  waveLength: number;
+  stage: number;
+  /** 지금 스테이지가 시작된 거리와 지금까지 달린 거리(스폰 시점을 정한다. 보스와 싸우는 동안은 늘지 않는다) */
+  stageStart: number;
+  distance: number;
+  /** 도로가 뒤로 흘러간 총 거리(그리기용: 차선이 움직인다) */
+  scroll: number;
   queue: Spawn[];
   bossActive: boolean;
   afterBossTimer: number;
@@ -243,6 +252,38 @@ function rand(state: OrangeState, n: number): number {
   return value % n;
 }
 
+// ---------------------------------------------------------------------------------------------- 수치
+
+const hpScaleCache: number[] = [100];
+
+/** 스테이지 번호에 따른 체력 배율(%). 정수 연산만 쓴다: 이전 값 * 배수 / 100 (내림) + 고정 증가. */
+export function hpScalePercent(stage: number): number {
+  const n = Math.max(0, stage - 1);
+  while (hpScaleCache.length <= n) {
+    hpScaleCache.push(Math.floor((hpScaleCache[hpScaleCache.length - 1] * SCALE.growthPercent) / 100) + SCALE.flat);
+  }
+  return hpScaleCache[n];
+}
+
+/** 이 스테이지에서 도로롱이 낼 것으로 기대하는 초당 피해량. 적의 체력 숫자의 기준이 된다. */
+export function expectedDps(stage: number): number {
+  return Math.floor((BASE_DPS * hpScalePercent(stage)) / 100);
+}
+
+/** 지금 도로롱의 초당 피해량(화면에 보이는 "화력" 숫자). */
+export function firepower(player: Player): number {
+  const interval = player.chicken > 0 ? Math.max(PLAYER.minInterval, Math.floor(player.interval / 2)) : player.interval;
+  return Math.floor((player.shots * player.damage * FPS) / interval);
+}
+
+export function runSpeedFor(stage: number): number {
+  return RUN.base + Math.min(RUN.maxBonus, (stage - 1) * RUN.perStage);
+}
+
+export function comboMultiplier(combo: number): number {
+  return Math.min(COMBO.maxMultiplier, 1 + Math.floor(combo / COMBO.perStep));
+}
+
 // ---------------------------------------------------------------------------------------------- 생성
 
 function takeId(state: OrangeState): number {
@@ -268,15 +309,17 @@ export function createState(seed: number): OrangeState {
       chicken: 0,
       cash: 0,
       star: 0,
+      pierce: 0,
     },
     bullets: [],
     enemies: [],
-    enemyShots: [],
+    dumbbells: [],
     gates: [],
     items: [],
-    wave: 0,
-    waveTick: 0,
-    waveLength: 0,
+    stage: 0,
+    stageStart: 0,
+    distance: 0,
+    scroll: 0,
     queue: [],
     bossActive: false,
     afterBossTimer: 0,
@@ -287,129 +330,112 @@ export function createState(seed: number): OrangeState {
     over: false,
     events: [],
   };
-  startWave(state);
+  startStage(state);
   return state;
-}
-
-/** 웨이브 번호에 따른 체력 배율(%). */
-const hpScaleCache: number[] = [100];
-
-export function hpScalePercent(wave: number): number {
-  const n = Math.max(0, wave - 1);
-  while (hpScaleCache.length <= n) {
-    // 정수 연산만 쓴다: 이전 값 * 배수 / 100 (내림) + 고정 증가
-    hpScaleCache.push(Math.floor((hpScaleCache[hpScaleCache.length - 1] * SCALE.growthPercent) / 100) + SCALE.flat);
-  }
-  return hpScaleCache[n];
-}
-
-function scaledHp(base: number, wave: number): number {
-  return Math.max(1, Math.floor((base * hpScalePercent(wave)) / 100));
-}
-
-function speedFor(base: number, wave: number): number {
-  return base + Math.min(SCALE.maxSpeedBonus, (wave - 1) * SCALE.speedPerWave);
-}
-
-function laneCenter(lane: number): number {
-  return lane * WAVE.laneWidth + WAVE.laneWidth / 2;
 }
 
 export function effect(kind: GateKind, value: number): GateEffect {
   return { kind, value, start: value, hits: 0 };
 }
 
-function goodGate(state: OrangeState, wave: number): GateEffect {
+function goodGate(state: OrangeState, stage: number): GateEffect {
   const roll = rand(state, 100);
-  if (roll < 38) {
-    return effect('shotsUp', 2 + Math.floor(wave / 6));
+  if (roll < 36) {
+    return effect('shotsUp', 1 + Math.floor(stage / 8));
   }
-  if (roll < 56 && wave >= 4) {
+  if (roll < 50 && stage >= 10) {
     return effect('shotsMul', 2);
   }
-  if (roll < 78) {
+  if (roll < 74) {
     return effect('rateUp', 2);
   }
-  return effect('dmgUp', 1 + Math.floor(wave / 8));
+  return effect('dmgUp', 1 + Math.floor(stage / 6));
 }
 
-function trapGate(state: OrangeState, wave: number): GateEffect {
-  return wave >= 5 && rand(state, 100) < 40 ? effect('shotsHalf', 2) : effect('shotsDown', 2 + Math.floor(wave / 8));
+function trapGate(state: OrangeState, stage: number): GateEffect {
+  return stage >= 12 && rand(state, 100) < 40 ? effect('shotsHalf', 2) : effect('shotsDown', 1 + Math.floor(stage / 10));
 }
 
 /** 게이트 한 쌍: 적어도 한쪽은 이로운 선택지이고, 다른 쪽은 이롭거나 함정이다. */
-function planGate(state: OrangeState, wave: number): { left: GateEffect; right: GateEffect } {
-  const good = goodGate(state, wave);
-  const other = rand(state, 100) < 45 ? trapGate(state, wave) : goodGate(state, wave);
+function planGate(state: OrangeState, stage: number): { left: GateEffect; right: GateEffect } {
+  const good = goodGate(state, stage);
+  const other = rand(state, 100) < 45 ? trapGate(state, stage) : goodGate(state, stage);
   return rand(state, 2) === 0 ? { left: good, right: other } : { left: other, right: good };
 }
 
-function planNormalWave(state: OrangeState, wave: number): void {
-  const rows = WAVE.baseRows + Math.min(WAVE.maxExtraRows, Math.floor(wave / 3));
-  const rowGap = Math.max(WAVE.rowGapMin, WAVE.rowGapStart - wave * 2);
-  const queue: Spawn[] = [];
-  for (let row = 0; row < rows; row += 1) {
-    const at = row * rowGap;
-    const lanes = Array.from({ length: WAVE.lanes }, (_, i) => i);
-    for (let i = lanes.length - 1; i > 0; i -= 1) {
-      const j = rand(state, i + 1);
-      [lanes[i], lanes[j]] = [lanes[j], lanes[i]];
-    }
-    const count = 1 + rand(state, 2 + Math.min(3, Math.ceil(wave / 2)));
-    for (let k = 0; k < count; k += 1) {
-      const roll = rand(state, 100);
-      let kind: EnemyKind = 'swarm';
-      if (k === 0 && wave >= 4 && roll < 14) {
-        kind = 'wall';
-      } else if (k === 0 && wave >= 3 && roll < 32) {
-        kind = 'slime';
-      }
-      queue.push({ at, kind, x: kind === 'wall' ? FIELD.width / 2 + (rand(state, 3) - 1) * WAVE.laneWidth : laneCenter(lanes[k]) });
-    }
-    if (wave % 3 === 0 && row === rows - 1) {
-      queue.push({ at: at + 10, kind: 'elite', x: laneCenter(rand(state, WAVE.lanes)) });
-    }
+function shuffled<T>(state: OrangeState, list: readonly T[]): T[] {
+  const copy = [...list];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = rand(state, i + 1);
+    [copy[i], copy[j]] = [copy[j], copy[i]];
   }
-  queue.push({ at: rows * rowGap + WAVE.gateDelay, kind: 'gate', x: 0, gate: planGate(state, wave) });
-  queue.sort((a, b) => a.at - b.at);
-  state.queue = queue;
-  state.waveLength = queue[queue.length - 1].at + WAVE.tail;
+  return copy;
 }
 
-function startWave(state: OrangeState): void {
-  state.wave += 1;
-  state.waveTick = 0;
-  state.events.push({ t: 'wave', n: state.wave });
-  if (state.wave % WAVE.bossEvery === 0) {
-    state.queue = [{ at: WAVE.bossEnterTick, kind: 'boss', x: FIELD.width / 2 }];
-    state.waveLength = Number.MAX_SAFE_INTEGER;
+function planNormalStage(state: OrangeState, stage: number): void {
+  const base = state.stageStart;
+  const dps = expectedDps(stage);
+  const queue: Spawn[] = [];
+  queue.push({ at: base + px(60), kind: 'gate', x: 0, gate: planGate(state, stage) });
+
+  // 거대 귤 덩어리: 체력 숫자가 "내 화력으로 부술 수 있나" 를 알려 준다. 3개가 길을 막는 건 후반에만.
+  const boulderCount = 1 + (rand(state, 100) < 45 ? 1 : 0) + (stage >= 8 && rand(state, 100) < 30 ? 1 : 0);
+  shuffled(state, STAGE.lanes)
+    .slice(0, boulderCount)
+    .forEach((x, i) => {
+      // 접근하는 동안(약 11초) 계속 쏘면 줄 수 있는 피해의 60~180%: 시작 화력으로는 못 부수는 큰 숫자도 나온다(비켜서 피하는 판단)
+      const hp = Math.max(10, Math.floor((dps * 11 * (60 + rand(state, 120))) / 100));
+      queue.push({ at: base + px(240) + i * px(20), kind: 'boulder', x, hp, w: px(90) + rand(state, px(45)) });
+    });
+
+  // 몰려오는 무리: 전체 체력은 기대 화력의 약 3초치
+  const count = Math.min(28, 3 + Math.floor((stage * 11) / 10) + rand(state, 3));
+  queue.push({ at: base + px(480), kind: 'crowd', x: px(60) + rand(state, FIELD.width - px(120)), hp: Math.max(2, Math.floor((dps * 7) / (2 * count))), count });
+
+  if (stage >= 4) {
+    const bruteCount = 1 + (stage >= 9 ? 1 : 0);
+    for (let i = 0; i < bruteCount; i += 1) {
+      queue.push({ at: base + px(600) + i * px(30), kind: 'brute', x: STAGE.lanes[rand(state, 3)], hp: Math.max(4, dps * 3) });
+    }
+  }
+  if (stage % 3 === 0) {
+    queue.push({ at: base + px(430), kind: 'item', x: px(60) + rand(state, FIELD.width - px(120)), item: 'orange' });
+  }
+  queue.sort((a, b) => a.at - b.at);
+  state.queue = queue;
+}
+
+function startStage(state: OrangeState): void {
+  state.stage += 1;
+  state.stageStart = state.distance;
+  state.events.push({ t: 'stage', n: state.stage });
+  if (state.stage % STAGE.bossEvery === 0) {
+    const index = state.stage / STAGE.bossEvery;
+    const hp = Math.floor((expectedDps(state.stage) * BOSS.seconds * (100 + (index - 1) * BOSS.growthPercent)) / 100);
+    state.queue = [{ at: state.distance, kind: 'boss', x: FIELD.width / 2, hp }];
     state.bossActive = true;
     state.events.push({ t: 'bossIntro' });
     return;
   }
-  planNormalWave(state, state.wave);
+  planNormalStage(state, state.stage);
 }
 
-function spawnEnemy(state: OrangeState, kind: EnemyKind, x: number, y: number, vx = 0): Enemy {
+function newEnemy(state: OrangeState, kind: EnemyKind, x: number, z: number, hp: number, w?: number): Enemy {
   const base = ENEMY[kind];
-  const boss = kind === 'boss';
-  const bossScale = boss ? 100 + (Math.floor(state.wave / WAVE.bossEvery) - 1) * 70 : 100;
-  const hp = Math.max(1, Math.floor((scaledHp(base.hp, state.wave) * bossScale) / 100));
   const enemy: Enemy = {
     id: takeId(state),
     kind,
-    baseX: x,
     x,
-    y,
-    w: base.w,
-    h: base.h,
+    z,
+    w: w ?? base.w,
+    depth: base.depth,
     hp,
     maxHp: hp,
-    vy: boss ? 0 : speedFor(base.vy, state.wave),
-    vx,
+    speed: base.speed,
     flash: 0,
     shielded: 0,
     born: state.tick,
+    seed: rand(state, 1000),
   };
   state.enemies.push(enemy);
   return enemy;
@@ -417,11 +443,15 @@ function spawnEnemy(state: OrangeState, kind: EnemyKind, x: number, y: number, v
 
 // ---------------------------------------------------------------------------------------------- 판정
 
-function overlap(ax: number, ay: number, aw: number, ah: number, bx: number, by: number, bw: number, bh: number): boolean {
-  return Math.abs(ax - bx) * 2 < aw + bw && Math.abs(ay - by) * 2 < ah + bh;
+function overlapX(ax: number, aw: number, bx: number, bw: number): boolean {
+  return Math.abs(ax - bx) * 2 < aw + bw;
 }
 
-function hitPlayer(state: OrangeState, cause: 'touch' | 'breach' | 'shot'): boolean {
+function overlapZ(az: number, ad: number, bz: number, bd: number): boolean {
+  return Math.abs(az - bz) * 2 < ad + bd;
+}
+
+function hitPlayer(state: OrangeState, cause: 'touch' | 'shot'): boolean {
   const p = state.player;
   if (p.star > 0 || p.invuln > 0) {
     return false;
@@ -429,16 +459,12 @@ function hitPlayer(state: OrangeState, cause: 'touch' | 'breach' | 'shot'): bool
   if (p.shield > 0) {
     p.shield -= 1;
     p.invuln = PLAYER.invulnTicksAfterShield;
-    state.events.push({ t: 'shieldBreak', x: p.x, y: PLAYER.y });
+    state.events.push({ t: 'shieldBreak', x: p.x });
     return true;
   }
   state.over = true;
   state.events.push({ t: 'over', cause });
   return true;
-}
-
-export function comboMultiplier(combo: number): number {
-  return Math.min(COMBO.maxMultiplier, 1 + Math.floor(combo / COMBO.perStep));
 }
 
 function award(state: OrangeState, points: number): number {
@@ -447,22 +473,21 @@ function award(state: OrangeState, points: number): number {
   return gained;
 }
 
-function dropItem(state: OrangeState, x: number, y: number, forced: boolean): void {
-  if (!forced && rand(state, 100) >= ITEM.dropPercent) {
+function dropItem(state: OrangeState, x: number, z: number, percent: number): void {
+  if (percent < 100 && rand(state, 100) >= percent) {
     return;
   }
-  const total = ITEM.orangeWeight + ITEM.chickenWeight + ITEM.cashWeight + ITEM.starWeight;
+  const total = Object.values(ITEM_WEIGHTS).reduce((a, b) => a + b, 0);
   let roll = rand(state, total);
   let kind: ItemKind = 'orange';
-  if (roll >= ITEM.orangeWeight) {
-    roll -= ITEM.orangeWeight;
-    kind = 'chicken';
-    if (roll >= ITEM.chickenWeight) {
-      roll -= ITEM.chickenWeight;
-      kind = roll < ITEM.cashWeight ? 'cash' : 'star';
+  for (const [name, weight] of Object.entries(ITEM_WEIGHTS) as [ItemKind, number][]) {
+    if (roll < weight) {
+      kind = name;
+      break;
     }
+    roll -= weight;
   }
-  state.items.push({ id: takeId(state), kind, x, y });
+  state.items.push({ id: takeId(state), kind, x, z });
 }
 
 function killEnemy(state: OrangeState, enemy: Enemy): void {
@@ -470,34 +495,31 @@ function killEnemy(state: OrangeState, enemy: Enemy): void {
   state.kills += 1;
   state.combo += 1;
   state.comboTimer = COMBO.window;
-  const points = award(state, base.points);
-  state.events.push({ t: 'kill', kind: enemy.kind, x: enemy.x, y: enemy.y, points });
-  if (enemy.kind === 'slime') {
-    spawnEnemy(state, 'mini', enemy.x - px(12), enemy.y, -px(0.6));
-    spawnEnemy(state, 'mini', enemy.x + px(12), enemy.y, px(0.6));
-  }
-  if (enemy.kind === 'elite') {
-    dropItem(state, enemy.x, enemy.y, true);
-  } else if (enemy.kind !== 'boss') {
-    dropItem(state, enemy.x, enemy.y, false);
+  const points = award(state, Math.floor((base.points * (100 + 10 * (state.stage - 1))) / 100));
+  state.events.push({ t: 'kill', kind: enemy.kind, x: enemy.x, z: enemy.z, points });
+  if (enemy.kind === 'boulder') {
+    dropItem(state, enemy.x, enemy.z, ITEM.dropBoulder);
+  } else if (enemy.kind === 'brute') {
+    dropItem(state, enemy.x, enemy.z, ITEM.dropBrute);
+  } else if (enemy.kind === 'grunt') {
+    dropItem(state, enemy.x, enemy.z, ITEM.dropGrunt);
   }
   if (enemy.kind === 'boss') {
-    state.score += BOSS.killBonus * Math.floor(state.wave / WAVE.bossEvery);
-    state.enemyShots = [];
-    state.events.push({ t: 'bossDown', x: enemy.x, y: enemy.y });
-    for (let i = 0; i < BOSS.rewardOranges; i += 1) {
-      state.items.push({ id: takeId(state), kind: 'orange', x: enemy.x + (i - 0) * px(20), y: enemy.y });
-    }
-    state.gates.push({ id: takeId(state), y: -GATE.height, ...planGate(state, state.wave), used: false });
+    const index = Math.floor(state.stage / STAGE.bossEvery);
+    state.score += BOSS.killBonus * index;
+    state.dumbbells = [];
+    state.events.push({ t: 'bossDown', x: enemy.x, z: enemy.z });
+    state.items.push({ id: takeId(state), kind: 'orange', x: enemy.x, z: enemy.z });
+    state.gates.push({ id: takeId(state), z: FIELD.depth, ...planGate(state, state.stage), used: false });
     state.bossActive = false;
-    state.afterBossTimer = WAVE.afterBoss;
+    state.afterBossTimer = STAGE.afterBoss;
   }
 }
 
-function applyGate(state: OrangeState, gate: Gate, effectChosen: GateEffect): void {
+function applyGate(state: OrangeState, gate: Gate, chosen: GateEffect): void {
   const p = state.player;
-  const v = effectChosen.value;
-  switch (effectChosen.kind) {
+  const v = chosen.value;
+  switch (chosen.kind) {
     case 'shotsUp':
       p.shots = Math.min(PLAYER.maxShots, p.shots + v);
       break;
@@ -518,41 +540,81 @@ function applyGate(state: OrangeState, gate: Gate, effectChosen: GateEffect): vo
       break;
   }
   gate.used = true;
-  state.events.push({ t: 'gate', kind: effectChosen.kind, value: v, x: p.x, y: PLAYER.y });
+  state.events.push({ t: 'gate', kind: chosen.kind, value: v, x: p.x });
 }
 
-/** 총알을 맞은 게이트는 이로운 + 계열 값이 조금씩 올라간다(쏠수록 커진다, 한도 있음). 배수(×)와 함정은 변하지 않는다. */
-function growGate(hitEffect: GateEffect): void {
-  hitEffect.hits += 1;
-  const shots = hitEffect.kind === 'shotsUp';
-  if (!shots && hitEffect.kind !== 'dmgUp' && hitEffect.kind !== 'rateUp') {
+/** 총알이 지나간 게이트는 이로운 + 계열 값이 조금씩 올라간다(쏠수록 커진다, 한도 있음). 배수(×)와 함정은 변하지 않는다. */
+function growGate(hit: GateEffect): void {
+  hit.hits += 1;
+  const shots = hit.kind === 'shotsUp';
+  if (!shots && hit.kind !== 'dmgUp' && hit.kind !== 'rateUp') {
     return;
   }
-  if (hitEffect.hits % (shots ? GATE.hitsPerStepShots : GATE.hitsPerStepOther) === 0) {
-    hitEffect.value = Math.min(hitEffect.start + GATE.maxGain, hitEffect.value + 1);
+  if (hit.hits % (shots ? GATE.hitsPerStepShots : GATE.hitsPerStepOther) === 0) {
+    hit.value = Math.min(hit.start + GATE.maxGain, hit.value + 1);
   }
+}
+
+function collect(state: OrangeState, item: Item): void {
+  const p = state.player;
+  switch (item.kind) {
+    case 'orange':
+      p.shield = Math.min(PLAYER.maxShield, p.shield + 1);
+      break;
+    case 'chicken':
+      p.chicken = POWER.chickenTicks;
+      break;
+    case 'cash':
+      p.cash = POWER.cashTicks;
+      break;
+    case 'star':
+      p.star = POWER.starTicks;
+      break;
+    case 'pierce':
+      p.pierce = POWER.pierceTicks;
+      break;
+    case 'bomb':
+      detonate(state);
+      break;
+  }
+  state.events.push({ t: 'item', kind: item.kind, x: item.x });
+}
+
+/** 귤 폭탄: 가까이 있는 모든 적에게 한꺼번에 피해를 준다(보스는 일부만). */
+function detonate(state: OrangeState): void {
+  const p = state.player;
+  const damage = BOMB.base + p.damage * p.shots * BOMB.perVolley;
+  for (const enemy of state.enemies) {
+    if (enemy.z - enemy.depth / 2 <= BOMB.range) {
+      enemy.hp -= enemy.kind === 'boss' ? Math.floor((damage * BOMB.bossPercent) / 100) : damage;
+      enemy.flash = 6;
+    }
+  }
+  state.events.push({ t: 'bomb', x: p.x });
 }
 
 // ---------------------------------------------------------------------------------------------- 진행
 
 function fire(state: OrangeState): void {
   const p = state.player;
-  const n = p.shots;
-  const interval = p.chicken > 0 ? Math.max(PLAYER.minInterval, Math.floor(p.interval / 2)) : p.interval;
   if (p.cooldown > 0) {
     p.cooldown -= 1;
     return;
   }
+  const n = p.shots;
+  const interval = p.chicken > 0 ? Math.max(PLAYER.minInterval, Math.floor(p.interval / 2)) : p.interval;
   const spacing = Math.min(BULLET.spacing, Math.floor(BULLET.maxSpan / n));
   for (let i = 0; i < n; i += 1) {
     const centered = 2 * i - (n - 1);
     state.bullets.push({
       id: takeId(state),
       x: p.x + Math.trunc((centered * spacing) / 2),
-      y: PLAYER.y - PLAYER.height / 2,
+      z: px(20),
       vx: Math.trunc((centered * BULLET.fanStep) / 2),
       damage: p.damage,
+      pierce: p.pierce > 0 ? BULLET.pierceHits : 0,
       gateId: 0,
+      lastHit: 0,
     });
   }
   p.cooldown = interval - 1;
@@ -562,39 +624,46 @@ function moveBullets(state: OrangeState): void {
   const survivors: Bullet[] = [];
   for (const bullet of state.bullets) {
     bullet.x += bullet.vx;
-    bullet.y -= BULLET.speed;
-    if (bullet.y < -BULLET.height || bullet.x < -px(20) || bullet.x > FIELD.width + px(20)) {
+    bullet.z += BULLET.speed;
+    if (bullet.z > FIELD.depth || bullet.x < -px(20) || bullet.x > FIELD.width + px(20)) {
       continue;
     }
     // 게이트: 총알은 그대로 통과하고, 지나가며 이로운 쪽 값을 키운다(총알마다 게이트당 한 번)
     for (const gate of state.gates) {
-      if (gate.used || bullet.gateId === gate.id || Math.abs(bullet.y - gate.y) * 2 >= GATE.height + BULLET.height) {
-        continue;
-      }
-      growGate(bullet.x < FIELD.width / 2 ? gate.left : gate.right);
-      bullet.gateId = gate.id;
-      break;
-    }
-    let consumed = false;
-    // 적: 먼저 닿은 한 마리에게 피해를 준다
-    for (const enemy of state.enemies) {
-      if (overlap(bullet.x, bullet.y, BULLET.width, BULLET.height, enemy.x, enemy.y, enemy.w, enemy.h)) {
-        if (enemy.shielded <= 0) {
-          enemy.hp -= bullet.damage;
-          enemy.flash = 4;
-        }
-        consumed = true;
+      if (!gate.used && bullet.gateId !== gate.id && overlapZ(bullet.z, BULLET.depth, gate.z, GATE.depth)) {
+        growGate(bullet.x < FIELD.width / 2 ? gate.left : gate.right);
+        bullet.gateId = gate.id;
         break;
       }
     }
-    if (!consumed) {
-      survivors.push(bullet);
+    // 적: 가장 가까운(z 가 작은) 한 마리에게 피해를 준다
+    let target: Enemy | null = null;
+    for (const enemy of state.enemies) {
+      if (enemy.id !== bullet.lastHit && overlapX(bullet.x, BULLET.width, enemy.x, enemy.w) && overlapZ(bullet.z, BULLET.depth, enemy.z, enemy.depth)) {
+        if (target === null || enemy.z < target.z) {
+          target = enemy;
+        }
+      }
     }
+    if (target !== null) {
+      if (target.shielded <= 0) {
+        target.hp -= bullet.damage;
+        target.flash = 4;
+      }
+      bullet.lastHit = target.id;
+      if (bullet.pierce > 0) {
+        bullet.pierce -= 1;
+        survivors.push(bullet);
+      }
+      continue;
+    }
+    survivors.push(bullet);
   }
   state.bullets = survivors;
 }
 
-function moveEnemies(state: OrangeState): void {
+function moveEnemies(state: OrangeState, runSpeed: number): void {
+  const p = state.player;
   for (const enemy of state.enemies) {
     if (enemy.flash > 0) {
       enemy.flash -= 1;
@@ -602,46 +671,31 @@ function moveEnemies(state: OrangeState): void {
     if (enemy.kind === 'boss') {
       continue;
     }
-    enemy.y += enemy.vy;
-    if (enemy.kind === 'swarm' || enemy.kind === 'elite') {
-      const phase = (state.tick + enemy.id * 13) % 120;
-      const triangle = phase < 60 ? phase : 120 - phase;
-      enemy.x = enemy.baseX + (triangle - 30) * 80;
-    } else {
-      enemy.baseX += enemy.vx;
-      enemy.x = enemy.baseX;
+    enemy.z -= runSpeed + enemy.speed;
+    if (enemy.kind === 'grunt' || enemy.kind === 'brute') {
+      // 도로롱 쪽으로 슬금슬금 몰려든다
+      const dx = p.x - enemy.x;
+      enemy.x += Math.max(-px(0.3), Math.min(px(0.3), Math.trunc(dx / 40)));
     }
   }
 }
 
 function updateBoss(state: OrangeState, boss: Enemy): void {
   const age = state.tick - boss.born;
-  if (boss.y < BOSS.hoverY) {
-    boss.y += BOSS.shotSpeed / 2;
+  if (boss.z > BOSS.holdZ) {
+    boss.z -= boss.speed;
     return;
   }
-  if (boss.vx === 0) {
-    boss.vx = BOSS.moveSpeed;
-  }
-  boss.x += boss.vx;
-  if (boss.x < boss.w / 2 || boss.x > FIELD.width - boss.w / 2) {
-    boss.vx = -boss.vx;
-    boss.x = Math.min(FIELD.width - boss.w / 2, Math.max(boss.w / 2, boss.x));
-  }
+  const direction = (Math.floor(age / 150) % 2 === 0 ? 1 : -1) * BOSS.moveSpeed;
+  boss.x = Math.min(FIELD.width - boss.w / 2, Math.max(boss.w / 2, boss.x + direction));
   const phase2 = boss.hp * 2 < boss.maxHp;
   const every = phase2 ? BOSS.throwEveryPhase2 : BOSS.throwEvery;
   if (age % every === 0) {
     const volley = phase2 ? 2 : 1;
     for (let i = 0; i < volley; i += 1) {
-      const aimX = state.player.x + (i === 0 ? 0 : px(50) * (rand(state, 2) === 0 ? -1 : 1));
-      const ticksToReach = Math.max(1, Math.floor((PLAYER.y - boss.y) / BOSS.shotSpeed));
-      state.enemyShots.push({
-        id: takeId(state),
-        x: boss.x,
-        y: boss.y + boss.h / 2,
-        vx: Math.trunc((aimX - boss.x) / ticksToReach),
-        vy: BOSS.shotSpeed,
-      });
+      const aimX = state.player.x + (i === 0 ? 0 : px(60) * (rand(state, 2) === 0 ? -1 : 1));
+      const ticksToReach = Math.max(1, Math.floor(boss.z / BOSS.dumbbellSpeed));
+      state.dumbbells.push({ id: takeId(state), x: boss.x, z: boss.z, vx: Math.trunc((aimX - boss.x) / ticksToReach) });
     }
   }
   if (phase2) {
@@ -665,12 +719,12 @@ function resolveEnemies(state: OrangeState): void {
       killEnemy(state, enemy);
       continue;
     }
-    if (enemy.kind !== 'boss' && enemy.y - enemy.h / 2 > FIELD.height) {
-      hitPlayer(state, 'breach');
+    if (enemy.kind !== 'boss' && enemy.z + enemy.depth / 2 < -px(40)) {
       continue;
     }
-    if (overlap(p.x, PLAYER.y, PLAYER.hitWidth, PLAYER.hitHeight, enemy.x, enemy.y, enemy.w, enemy.h)) {
-      if (hitPlayer(state, 'touch') && enemy.kind !== 'boss') {
+    // 몸통이 도로롱과 깊이가 겹칠 때만 부딪힌다(이미 지나쳐 뒤에 있는 적에게는 옆으로 움직여도 닿지 않는다)
+    if (enemy.kind !== 'boss' && overlapZ(0, PLAYER.depth, enemy.z, enemy.depth) && overlapX(p.x, PLAYER.hitWidth, enemy.x, enemy.w)) {
+      if (hitPlayer(state, 'touch')) {
         continue;
       }
     }
@@ -679,69 +733,49 @@ function resolveEnemies(state: OrangeState): void {
   state.enemies = survivors;
 }
 
-function moveEnemyShots(state: OrangeState): void {
+function moveDumbbells(state: OrangeState): void {
   const p = state.player;
-  const survivors: EnemyShot[] = [];
-  for (const shot of state.enemyShots) {
-    shot.x += shot.vx;
-    shot.y += shot.vy;
-    if (shot.y > FIELD.height + BOSS.shotSize || shot.x < -BOSS.shotSize || shot.x > FIELD.width + BOSS.shotSize) {
+  const survivors: Dumbbell[] = [];
+  for (const d of state.dumbbells) {
+    d.x += d.vx;
+    d.z -= BOSS.dumbbellSpeed;
+    if (d.z < -px(30)) {
       continue;
     }
-    if (overlap(p.x, PLAYER.y, PLAYER.hitWidth, PLAYER.hitHeight, shot.x, shot.y, BOSS.shotSize, BOSS.shotSize)) {
+    if (overlapZ(0, PLAYER.depth, d.z, px(14)) && overlapX(p.x, PLAYER.hitWidth, d.x, BOSS.dumbbellWidth)) {
       hitPlayer(state, 'shot');
       continue;
     }
-    survivors.push(shot);
+    survivors.push(d);
   }
-  state.enemyShots = survivors;
+  state.dumbbells = survivors;
 }
 
-function moveGates(state: OrangeState): void {
+function moveGates(state: OrangeState, runSpeed: number): void {
   const p = state.player;
   state.gates = state.gates.filter((gate) => {
-    gate.y += GATE.speed;
-    if (!gate.used && Math.abs(gate.y - PLAYER.y) * 2 < GATE.height + PLAYER.hitHeight) {
+    gate.z -= runSpeed;
+    if (!gate.used && gate.z <= 0) {
       applyGate(state, gate, p.x < FIELD.width / 2 ? gate.left : gate.right);
     }
-    return !gate.used && gate.y - GATE.height / 2 <= FIELD.height;
+    return !gate.used && gate.z > -px(30);
   });
 }
 
-function moveItems(state: OrangeState): void {
+function moveItems(state: OrangeState, runSpeed: number): void {
   const p = state.player;
   const survivors: Item[] = [];
   for (const item of state.items) {
-    item.y += ITEM.speed;
-    if (item.y - ITEM.size / 2 > FIELD.height) {
-      continue;
-    }
-    if (overlap(p.x, PLAYER.y, PLAYER.width, PLAYER.height, item.x, item.y, ITEM.size, ITEM.size)) {
+    item.z -= runSpeed;
+    if (item.z <= 0 && item.z > -px(30) && overlapX(p.x, PLAYER.pickupWidth, item.x, ITEM.width)) {
       collect(state, item);
       continue;
     }
-    survivors.push(item);
+    if (item.z > -px(30)) {
+      survivors.push(item);
+    }
   }
   state.items = survivors;
-}
-
-function collect(state: OrangeState, item: Item): void {
-  const p = state.player;
-  switch (item.kind) {
-    case 'orange':
-      p.shield = Math.min(PLAYER.maxShield, p.shield + 1);
-      break;
-    case 'chicken':
-      p.chicken = POWER.chickenTicks;
-      break;
-    case 'cash':
-      p.cash = POWER.cashTicks;
-      break;
-    case 'star':
-      p.star = POWER.starTicks;
-      break;
-  }
-  state.events.push({ t: 'item', kind: item.kind, x: item.x, y: item.y });
 }
 
 function tickTimers(state: OrangeState): void {
@@ -750,6 +784,7 @@ function tickTimers(state: OrangeState): void {
   p.chicken = Math.max(0, p.chicken - 1);
   p.cash = Math.max(0, p.cash - 1);
   p.star = Math.max(0, p.star - 1);
+  p.pierce = Math.max(0, p.pierce - 1);
   if (state.comboTimer > 0) {
     state.comboTimer -= 1;
     if (state.comboTimer === 0) {
@@ -759,32 +794,45 @@ function tickTimers(state: OrangeState): void {
 }
 
 function runSpawns(state: OrangeState): void {
-  while (state.queue.length > 0 && state.queue[0].at <= state.waveTick) {
+  while (state.queue.length > 0 && state.queue[0].at <= state.distance) {
     const spawn = state.queue.shift() as Spawn;
-    if (spawn.kind === 'gate' && spawn.gate) {
-      state.gates.push({ id: takeId(state), y: -GATE.height, left: spawn.gate.left, right: spawn.gate.right, used: false });
-    } else if (spawn.kind === 'boss') {
-      spawnEnemy(state, 'boss', spawn.x, -ENEMY.boss.h);
-    } else if (spawn.kind !== 'gate') {
-      spawnEnemy(state, spawn.kind, spawn.x, -ENEMY[spawn.kind].h / 2);
+    switch (spawn.kind) {
+      case 'gate':
+        if (spawn.gate) {
+          state.gates.push({ id: takeId(state), z: FIELD.depth, left: spawn.gate.left, right: spawn.gate.right, used: false });
+        }
+        break;
+      case 'item':
+        state.items.push({ id: takeId(state), kind: spawn.item ?? 'orange', x: spawn.x, z: FIELD.depth });
+        break;
+      case 'crowd': {
+        const count = spawn.count ?? 1;
+        for (let i = 0; i < count; i += 1) {
+          const x = Math.min(FIELD.width - px(16), Math.max(px(16), spawn.x + rand(state, px(110)) - px(55)));
+          newEnemy(state, 'grunt', x, FIELD.depth + rand(state, px(160)), spawn.hp ?? 2);
+        }
+        break;
+      }
+      default:
+        newEnemy(state, spawn.kind, spawn.x, FIELD.depth, spawn.hp ?? 1, spawn.w);
     }
   }
 }
 
-function advanceWave(state: OrangeState): void {
-  state.waveTick += 1;
-  if (state.wave % WAVE.bossEvery === 0) {
-    // 보스 웨이브는 보스를 쓰러뜨리면 잠깐 쉬었다가 다음 웨이브가 시작된다
+function advanceStage(state: OrangeState, running: boolean): void {
+  if (state.stage % STAGE.bossEvery === 0) {
+    // 보스 스테이지는 보스를 쓰러뜨리면 잠깐 쉬었다가 다음 스테이지가 시작된다
     if (!state.bossActive && state.afterBossTimer > 0) {
       state.afterBossTimer -= 1;
       if (state.afterBossTimer === 0) {
-        startWave(state);
+        startStage(state);
       }
     }
     return;
   }
-  if (state.waveTick >= state.waveLength) {
-    startWave(state);
+  if (running && state.distance >= state.stageStart + STAGE.length) {
+    state.score += 50 * state.stage;
+    startStage(state);
   }
 }
 
@@ -801,21 +849,29 @@ export function step(state: OrangeState, input: OrangeInput): void {
   const delta = p.targetX - p.x;
   p.x += Math.abs(delta) <= PLAYER.speed ? delta : delta > 0 ? PLAYER.speed : -PLAYER.speed;
 
+  // 보스가 자리를 잡으면 도로롱은 멈춰 서서 싸운다(세계가 다가오지 않는다)
+  const boss = state.enemies.find((e) => e.kind === 'boss');
+  const holding = boss !== undefined && boss.z <= BOSS.holdZ;
+  const runSpeed = holding ? 0 : runSpeedFor(state.stage);
+  state.scroll += runSpeed;
+  const bossStage = state.stage % STAGE.bossEvery === 0;
+  if (!bossStage) {
+    state.distance += runSpeed;
+  }
+
   fire(state);
   runSpawns(state);
   moveBullets(state);
-  moveEnemies(state);
-  for (const enemy of state.enemies) {
-    if (enemy.kind === 'boss') {
-      updateBoss(state, enemy);
-    }
+  moveEnemies(state, runSpeed);
+  if (boss) {
+    updateBoss(state, boss);
   }
   resolveEnemies(state);
-  moveEnemyShots(state);
-  moveGates(state);
-  moveItems(state);
+  moveDumbbells(state);
+  moveGates(state, runSpeed);
+  moveItems(state, runSpeed);
   tickTimers(state);
-  advanceWave(state);
+  advanceStage(state, !bossStage);
 }
 
 export function scoreOf(state: OrangeState): number {

@@ -101,10 +101,10 @@ games:
       "2048":
         max-points-per-second: ${GAMES_2048_MAX_PPS:600}
         max-score: 3932156
-      # 귤 폭격 도로롱: 점수 규칙 점검용 봇이 10초 구간에서 낸 최고 점수율이 초당 약 860점이었다.
-      # 보스 처치 보너스와 돈다발(2배)의 순간 폭발을 감안해 그 약 3배로 넉넉히 잡는다. 정밀한 검증은 입력 재생(replay)으로 한다.
+      # 귤 폭격 도로롱: 점검용 봇이 10초 구간에서 낸 최고 점수율이 초당 약 1060점이었다.
+      # 보스 처치 보너스·콤보·돈다발(2배)의 순간 폭발을 감안해 그 약 3배로 넉넉히 잡는다. 정밀한 검증은 입력 재생(replay)으로 한다.
       orange-blitz:
-        max-points-per-second: ${GAMES_ORANGE_BLITZ_MAX_PPS:2500}
+        max-points-per-second: ${GAMES_ORANGE_BLITZ_MAX_PPS:3500}
 
   # Doro 에서 영구 탈퇴한 사용자의 게임 프로필 개인정보를 주기적으로 익명화한다 (Doro 내부 API 를 조회).
   deleted-sync:

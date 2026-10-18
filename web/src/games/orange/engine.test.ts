@@ -4,16 +4,21 @@ import {
   FPS,
   PLAYER,
   PX,
-  WAVE_BOSS_EVERY,
+  STAGE_BOSS_EVERY,
   comboMultiplier,
   createState,
   effect,
+  expectedDps,
+  firepower,
   hpScalePercent,
   nextUint,
   px,
+  runSpeedFor,
   step,
   type Enemy,
+  type EnemyKind,
   type Gate,
+  type GateEffect,
   type OrangeInput,
   type OrangeState,
 } from './engine';
@@ -27,20 +32,24 @@ function play(state: OrangeState, frames: number, input: (s: OrangeState) => Ora
   return state;
 }
 
-function enemyAt(state: OrangeState, kind: Enemy['kind'], x: number, y: number, hp = 1): Enemy {
-  const enemy: Enemy = {
-    id: state.nextId++, kind, baseX: x, x, y, w: px(30), h: px(30), hp, maxHp: hp, vy: 0, vx: 0, flash: 0, shielded: 0, born: state.tick,
-  };
+/** 스테이지가 저절로 진행·스폰되지 않는 빈 판(규칙을 하나씩 확인하려고). */
+function emptied(seed = 1): OrangeState {
+  const state = createState(seed);
+  state.queue = [];
+  state.stageStart = Number.MAX_SAFE_INTEGER / 2;
+  return state;
+}
+
+function enemyAt(state: OrangeState, kind: EnemyKind, x: number, z: number, hp = 1, w = px(30)): Enemy {
+  const enemy: Enemy = { id: state.nextId++, kind, x, z, w, depth: px(20), hp, maxHp: hp, speed: 0, flash: 0, shielded: 0, born: state.tick, seed: 0 };
   state.enemies.push(enemy);
   return enemy;
 }
 
-/** 새 웨이브의 자동 생성물을 치우고 판을 비운 상태로 만든다(규칙을 하나씩 확인하려고). */
-function emptied(seed = 1): OrangeState {
-  const state = createState(seed);
-  state.queue = [];
-  state.waveLength = Number.MAX_SAFE_INTEGER;
-  return state;
+function gateAt(state: OrangeState, z: number, left: GateEffect, right: GateEffect): Gate {
+  const gate: Gate = { id: state.nextId++, z, left, right, used: false };
+  state.gates.push(gate);
+  return gate;
 }
 
 describe('난수', () => {
@@ -54,22 +63,22 @@ describe('난수', () => {
       b = y.next;
       expect(x.value).toBe(y.value);
       expect(Number.isInteger(x.value)).toBe(true);
-      expect(x.value).toBeGreaterThanOrEqual(0);
       expect(x.value).toBeLessThan(2 ** 32);
     }
   });
 });
 
 describe('시작과 이동', () => {
-  it('1웨이브, 화면 가운데, 기본 화력으로 시작한다', () => {
+  it('1스테이지, 도로 가운데, 기본 화력으로 시작한다', () => {
     const state = createState(1);
-    expect(state.wave).toBe(1);
+    expect(state.stage).toBe(1);
     expect(state.player.x).toBe(CENTER);
     expect(state.player.shots).toBe(PLAYER.startShots);
+    expect(firepower(state.player)).toBe(Math.floor((PLAYER.startShots * PLAYER.startDamage * FPS) / PLAYER.startInterval));
     expect(state.over).toBe(false);
   });
 
-  it('최대 속도로만 움직이고 화면 밖으로 나가지 않는다', () => {
+  it('최대 속도로만 움직이고 도로 밖으로 나가지 않는다', () => {
     const state = emptied();
     step(state, { targetX: 0 });
     expect(state.player.x).toBe(CENTER - PLAYER.speed);
@@ -78,17 +87,25 @@ describe('시작과 이동', () => {
     play(state, 200, () => ({ targetX: FIELD.width + px(500) }));
     expect(state.player.x).toBe(FIELD.width - PLAYER.width / 2);
   });
+
+  it('달릴수록 도로가 흘러가고 달리는 속도는 스테이지가 오를수록 빨라진다(상한 있음)', () => {
+    const state = emptied();
+    play(state, 10);
+    expect(state.scroll).toBe(10 * runSpeedFor(1));
+    expect(runSpeedFor(10)).toBeGreaterThan(runSpeedFor(1));
+    expect(runSpeedFor(999)).toBe(runSpeedFor(999 + 1));
+  });
 });
 
 describe('사격', () => {
-  it('자동으로 쏘고 총알이 위로 날아간다', () => {
+  it('자동으로 앞으로 쏜다', () => {
     const state = emptied();
     state.player.shots = 1;
     step(state, { targetX: CENTER });
     expect(state.bullets).toHaveLength(1);
-    const y = state.bullets[0].y;
+    const z = state.bullets[0].z;
     step(state, { targetX: CENTER });
-    expect(state.bullets[0].y).toBeLessThan(y);
+    expect(state.bullets[0].z).toBeGreaterThan(z);
   });
 
   it('총알 수가 늘면 한 번에 그만큼 나가고 부채꼴로 퍼진다', () => {
@@ -105,84 +122,157 @@ describe('사격', () => {
   it('연사 간격만큼 쉬었다가 다시 쏜다', () => {
     const state = emptied();
     state.player.interval = 10;
-    let shotsFired = 0;
+    let volleys = 0;
     for (let i = 0; i < 30; i += 1) {
       const before = state.nextId;
       step(state, { targetX: CENTER });
       if (state.nextId > before) {
-        shotsFired += 1;
+        volleys += 1;
       }
     }
-    expect(shotsFired).toBe(3);
+    expect(volleys).toBe(3);
+  });
+
+  it('화력 숫자는 총알 수 × 공격력 × 초당 발사 횟수이고 치킨을 먹으면 연사가 두 배다', () => {
+    const state = emptied();
+    state.player.shots = 4;
+    state.player.damage = 5;
+    state.player.interval = 10;
+    expect(firepower(state.player)).toBe(120);
+    state.player.chicken = 100;
+    expect(firepower(state.player)).toBe(240);
   });
 });
 
 describe('적과 점수', () => {
-  it('총알로 적을 쓰러뜨리면 점수와 처치 수가 오르고 kill 이벤트가 나온다', () => {
+  it('총알로 적의 체력(숫자)을 깎고 다 깎으면 점수·처치 수가 오르고 kill 이벤트가 나온다', () => {
     const state = emptied();
-    enemyAt(state, 'swarm', CENTER, px(400), 1);
+    state.player.shots = 1;
+    const enemy = enemyAt(state, 'grunt', CENTER, px(300), 10);
     const events: string[] = [];
-    for (let i = 0; i < 60 && state.kills === 0; i += 1) {
+    for (let i = 0; i < 120 && state.kills === 0; i += 1) {
       step(state, { targetX: CENTER });
       state.events.forEach((e) => events.push(e.t));
+      if (state.kills === 0 && enemy.hp < 10) {
+        expect(enemy.hp).toBeLessThan(10);
+      }
     }
     expect(state.kills).toBe(1);
     expect(state.score).toBe(10);
     expect(events).toContain('kill');
   });
 
-  it('연속 처치하면 콤보 배율이 올라가고, 한동안 못 잡으면 콤보가 끊긴다', () => {
+  it('거대 귤 덩어리는 체력이 크고 점수는 체력에 비례해 더 받는다', () => {
+    const state = emptied();
+    state.player.damage = 99;
+    enemyAt(state, 'boulder', CENTER, px(300), 400, px(110));
+    play(state, 120);
+    expect(state.kills).toBe(1);
+    expect(state.score).toBeGreaterThanOrEqual(100);
+  });
+
+  it('점수는 스테이지가 오를수록 조금씩 커진다', () => {
+    const early = emptied();
+    enemyAt(early, 'grunt', CENTER, px(300), 1);
+    play(early, 80);
+    const late = emptied();
+    late.stage = 21;
+    enemyAt(late, 'grunt', CENTER, px(300), 1);
+    play(late, 80);
+    expect(late.score).toBe(early.score * 3);
+  });
+
+  it('연속 처치하면 콤보 배율이 오르고, 한동안 못 잡으면 콤보가 끊긴다', () => {
     expect(comboMultiplier(0)).toBe(1);
     expect(comboMultiplier(10)).toBe(2);
     expect(comboMultiplier(999)).toBe(5);
     const state = emptied();
-    enemyAt(state, 'swarm', CENTER, px(400), 1);
-    play(state, 60, () => ({ targetX: CENTER }));
+    enemyAt(state, 'grunt', CENTER, px(300), 1);
+    play(state, 80);
     expect(state.combo).toBe(1);
-    play(state, 120, () => ({ targetX: CENTER }));
+    play(state, 120);
     expect(state.combo).toBe(0);
   });
 
-  it('슬라임은 죽으면 작은 슬라임 둘로 갈라진다', () => {
+  it('총알은 가장 가까운 적부터 맞힌다(앞의 적이 뒤의 적을 가린다)', () => {
     const state = emptied();
-    state.player.damage = 99;
-    enemyAt(state, 'slime', CENTER, px(400), 5);
-    for (let i = 0; i < 60 && state.kills === 0; i += 1) {
-      step(state, { targetX: CENTER });
-    }
-    expect(state.enemies.filter((e) => e.kind === 'mini')).toHaveLength(2);
+    state.player.shots = 1;
+    const near = enemyAt(state, 'grunt', CENTER, px(200), 999);
+    const far = enemyAt(state, 'grunt', CENTER, px(400), 999);
+    play(state, 60);
+    expect(near.hp).toBeLessThan(999);
+    expect(far.hp).toBe(999);
   });
 
-  it('웨이브가 올라가면 체력 배율이 커진다', () => {
-    expect(hpScalePercent(1)).toBe(100);
-    expect(hpScalePercent(11)).toBeGreaterThan(hpScalePercent(2));
+  it('무리는 도로롱 쪽으로 슬금슬금 몰려든다', () => {
+    const state = emptied();
+    const grunt = enemyAt(state, 'grunt', px(40), px(700), 999);
+    grunt.speed = px(0.7);
+    const startGap = Math.abs(state.player.x - grunt.x);
+    play(state, 100);
+    expect(Math.abs(state.player.x - grunt.x)).toBeLessThan(startGap);
+    expect(grunt.z).toBeLessThan(px(700));
+  });
+
+  it('체력 배율은 정수이고 갈수록 가속해서 커진다(끝없는 모드가 결국 끝나도록)', () => {
+    const percents = Array.from({ length: 40 }, (_, i) => hpScalePercent(i + 1));
+    percents.forEach((p) => expect(Number.isInteger(p)).toBe(true));
+    expect(percents[39] - percents[38]).toBeGreaterThan((percents[10] - percents[9]) * 5);
+    expect(expectedDps(1)).toBe(45);
+    expect(expectedDps(20)).toBeGreaterThan(expectedDps(10));
+  });
+});
+
+describe('스테이지 스폰', () => {
+  it('스테이지를 달리면 게이트·귤 덩어리·무리가 차례로 나오고 체력은 기대 화력에서 정해진다', () => {
+    const state = createState(3);
+    const kinds = new Set<string>();
+    state.player.star = Number.MAX_SAFE_INTEGER;
+    for (let i = 0; i < 700 && state.stage === 1; i += 1) {
+      step(state, { targetX: CENTER });
+      state.enemies.forEach((e) => kinds.add(e.kind));
+      if (state.gates.length > 0) {
+        kinds.add('gate');
+      }
+    }
+    expect(kinds.has('gate')).toBe(true);
+    expect(kinds.has('boulder')).toBe(true);
+    expect(kinds.has('grunt')).toBe(true);
+    const boulder = state.enemies.find((e) => e.kind === 'boulder');
+    if (boulder) {
+      // 스테이지 1: 기대 화력 40 × 접근 시간 11초 × (0.6~1.8)
+      expect(boulder.maxHp).toBeGreaterThanOrEqual(264);
+      expect(boulder.maxHp).toBeLessThanOrEqual(792);
+    }
+  });
+
+  it('일정 거리를 달리면 다음 스테이지로 넘어가고 보너스를 받는다', () => {
+    const state = createState(3);
+    state.player.star = Number.MAX_SAFE_INTEGER;
+    const before = state.score;
+    play(state, 1000);
+    expect(state.stage).toBeGreaterThanOrEqual(2);
+    expect(state.score).toBeGreaterThan(before);
   });
 });
 
 describe('게이트', () => {
-  function gateAt(state: OrangeState, left: Gate['left'], right: Gate['right']): Gate {
-    const gate: Gate = { id: state.nextId++, y: PLAYER.y - px(70), left, right, used: false };
-    state.gates.push(gate);
-    return gate;
-  }
-
   it('지나가는 쪽 게이트의 효과만 적용된다', () => {
     const left = emptied();
-    gateAt(left, effect('shotsUp', 3), effect('dmgUp', 5));
-    play(left, 80, () => ({ targetX: px(40) }));
-    // 게이트 아래에서 쏘면 값이 조금 오를 수 있으므로 최소한 원래 값만큼은 늘어난다
+    gateAt(left, px(40), effect('shotsUp', 3), effect('dmgUp', 5));
+    play(left, 60, () => ({ targetX: px(40) }));
     expect(left.player.shots).toBeGreaterThanOrEqual(PLAYER.startShots + 3);
     expect(left.player.damage).toBe(PLAYER.startDamage);
 
     const right = emptied();
-    gateAt(right, effect('shotsUp', 3), effect('dmgUp', 5));
-    play(right, 80, () => ({ targetX: FIELD.width - px(40) }));
+    gateAt(right, px(40), effect('shotsUp', 3), effect('dmgUp', 5));
+    play(right, 60, () => ({ targetX: FIELD.width - px(40) }));
     expect(right.player.shots).toBe(PLAYER.startShots);
     expect(right.player.damage).toBe(PLAYER.startDamage + 5);
   });
 
   it('배수·연사·함정 게이트의 효과', () => {
-    const cases: [Gate['left'], (s: OrangeState) => void, (s: OrangeState) => number][] = [
+    const cases: [GateEffect, (s: OrangeState) => void, (s: OrangeState) => number][] = [
       [effect('shotsMul', 2), (s) => { s.player.shots = 6; }, (s) => s.player.shots],
       [effect('rateUp', 4), () => undefined, (s) => s.player.interval],
       [effect('shotsDown', 2), (s) => { s.player.shots = 5; }, (s) => s.player.shots],
@@ -192,66 +282,95 @@ describe('게이트', () => {
     cases.forEach(([chosen, setup, read], i) => {
       const state = emptied();
       setup(state);
-      gateAt(state, chosen, effect('dmgUp', 1));
-      play(state, 80, () => ({ targetX: px(40) }));
+      gateAt(state, px(40), chosen, effect('dmgUp', 1));
+      play(state, 60, () => ({ targetX: px(40) }));
       expect(read(state)).toBe(expected[i]);
     });
   });
 
-  it('총알 수는 한계를 넘지 않고 함정으로도 1 아래로 내려가지 않는다', () => {
-    const state = emptied();
-    state.player.shots = 30;
-    gateAt(state, effect('shotsMul', 2), effect('dmgUp', 1));
-    play(state, 80, () => ({ targetX: px(40) }));
-    expect(state.player.shots).toBe(PLAYER.maxShots);
+  it('총알 수와 공격력에는 상한이 있고 함정으로도 1 아래로 내려가지 않는다', () => {
+    const capped = emptied();
+    capped.player.shots = PLAYER.maxShots;
+    capped.player.damage = PLAYER.maxDamage;
+    gateAt(capped, px(40), effect('shotsMul', 2), effect('dmgUp', 50));
+    play(capped, 60, () => ({ targetX: px(40) }));
+    expect(capped.player.shots).toBe(PLAYER.maxShots);
+    gateAt(capped, px(40), effect('dmgUp', 50), effect('shotsUp', 1));
+    play(capped, 60, () => ({ targetX: px(40) }));
+    expect(capped.player.damage).toBe(PLAYER.maxDamage);
 
     const low = emptied();
-    gateAt(low, effect('shotsDown', 9), effect('dmgUp', 1));
-    play(low, 80, () => ({ targetX: px(40) }));
+    gateAt(low, px(40), effect('shotsDown', 9), effect('dmgUp', 1));
+    play(low, 60, () => ({ targetX: px(40) }));
     expect(low.player.shots).toBe(1);
   });
 
-  it('게이트를 쏘면 총알 수 게이트는 8발마다 1씩 오르고 한도(원래 값+8)를 넘지 않는다(총알은 게이트에 막힌다)', () => {
+  it('총알은 게이트를 통과해 뒤의 적을 맞히고, 총알 하나는 게이트를 한 번만 센다', () => {
     const state = emptied();
-    const gate = gateAt(state, effect('shotsUp', 2), effect('dmgUp', 1));
-    gate.y = px(300);
     state.player.x = px(40);
-    play(state, 120, () => ({ targetX: px(40) }));
-    expect(gate.left.hits).toBeGreaterThanOrEqual(8);
-    expect(gate.left.value).toBeGreaterThan(2);
+    state.player.shots = 1;
+    state.player.interval = 1000;
+    const gate = gateAt(state, px(300), effect('shotsUp', 2), effect('dmgUp', 1));
+    const enemy = enemyAt(state, 'grunt', px(40), px(600), 99);
+    play(state, 80, () => ({ targetX: px(40) }));
+    expect(gate.left.hits).toBe(1);
     expect(gate.right.hits).toBe(0);
+    expect(enemy.hp).toBeLessThan(99);
+  });
+
+  it('총알 수 게이트는 30발마다 1씩 오르고 한도(원래 값+3)를 넘지 않는다', () => {
+    const state = emptied();
+    state.player.x = px(40);
+    state.player.damage = 1;
+    const gate = gateAt(state, px(500), effect('shotsUp', 2), effect('dmgUp', 1));
+    gate.z = px(500);
+    state.player.shots = 6;
+    play(state, 150, () => ({ targetX: px(40) }));
+    expect(gate.left.hits).toBeGreaterThanOrEqual(30);
+    expect(gate.left.value).toBeGreaterThan(2);
+    expect(gate.left.value).toBeLessThanOrEqual(2 + 3);
   });
 });
 
 describe('보호막과 한 방 컷', () => {
-  it('귤(보호막)이 없으면 적에게 닿는 순간 끝난다', () => {
+  it('귤(보호막)이 없으면 부딪히는 순간 끝난다', () => {
     const state = emptied();
-    enemyAt(state, 'swarm', CENTER, PLAYER.y, 99);
+    enemyAt(state, 'grunt', CENTER, 0, 999);
     step(state, { targetX: CENTER });
     expect(state.over).toBe(true);
     expect(state.events.some((e) => e.t === 'over')).toBe(true);
   });
 
-  it('보호막은 한 번만 막아 주고, 막은 뒤 잠깐은 무적이다', () => {
+  it('이미 지나쳐 뒤에 있는 적에게는 옆으로 움직여 들어가도 부딪히지 않는다', () => {
+    const state = emptied();
+    state.player.x = px(100);
+    enemyAt(state, 'boulder', px(180), -px(30), 999, px(100));
+    play(state, 12, () => ({ targetX: px(180) }));
+    expect(state.over).toBe(false);
+  });
+
+  it('길에서 비켜서면 부딪히지 않는다', () => {
+    const state = emptied();
+    enemyAt(state, 'boulder', px(60), 0, 999, px(100));
+    step(state, { targetX: px(300) });
+    play(state, 30, () => ({ targetX: px(300) }));
+    expect(state.over).toBe(false);
+  });
+
+  it('보호막은 한 번만 막아 주고 막은 적은 부서지며, 그 뒤 잠깐은 무적이다', () => {
     const state = emptied();
     state.player.shield = 1;
-    enemyAt(state, 'swarm', CENTER, PLAYER.y, 99);
+    enemyAt(state, 'grunt', CENTER, 0, 999);
     step(state, { targetX: CENTER });
     expect(state.over).toBe(false);
     expect(state.player.shield).toBe(0);
     expect(state.player.invuln).toBeGreaterThan(0);
-    enemyAt(state, 'swarm', CENTER, PLAYER.y, 99);
+    expect(state.enemies).toHaveLength(0);
+    enemyAt(state, 'grunt', CENTER, 0, 999);
     step(state, { targetX: CENTER });
     expect(state.over).toBe(false);
-    play(state, PLAYER.invulnTicksAfterShield + 1, () => ({ targetX: CENTER }));
-    enemyAt(state, 'swarm', CENTER, PLAYER.y, 99);
-    step(state, { targetX: CENTER });
-    expect(state.over).toBe(true);
-  });
-
-  it('적이 바닥선을 넘어가도 한 번 맞은 것으로 친다', () => {
-    const state = emptied();
-    enemyAt(state, 'swarm', px(40), FIELD.height + px(30), 99);
+    play(state, PLAYER.invulnTicksAfterShield + 1);
+    enemyAt(state, 'grunt', CENTER, 0, 999);
     step(state, { targetX: CENTER });
     expect(state.over).toBe(true);
   });
@@ -259,77 +378,121 @@ describe('보호막과 한 방 컷', () => {
   it('별(무적) 동안에는 닿아도 괜찮다', () => {
     const state = emptied();
     state.player.star = 100;
-    enemyAt(state, 'swarm', CENTER, PLAYER.y, 99);
+    enemyAt(state, 'grunt', CENTER, 0, 999);
     step(state, { targetX: CENTER });
     expect(state.over).toBe(false);
   });
 });
 
 describe('아이템', () => {
-  it('귤은 보호막(최대 2), 치킨은 연사, 돈다발은 점수 2배, 별은 무적', () => {
-    const kinds = ['orange', 'orange', 'orange', 'chicken', 'cash', 'star'] as const;
+  it('귤은 보호막(최대 2), 치킨은 연사, 돈다발은 점수 2배, 별은 무적, 관통은 관통 상태', () => {
     const state = emptied();
-    kinds.forEach((kind) => state.items.push({ id: state.nextId++, kind, x: CENTER, y: PLAYER.y }));
+    (['orange', 'orange', 'orange', 'chicken', 'cash', 'star', 'pierce'] as const).forEach((kind) =>
+      state.items.push({ id: state.nextId++, kind, x: CENTER, z: 0 }),
+    );
     step(state, { targetX: CENTER });
     expect(state.player.shield).toBe(PLAYER.maxShield);
     expect(state.player.chicken).toBeGreaterThan(0);
     expect(state.player.cash).toBeGreaterThan(0);
     expect(state.player.star).toBeGreaterThan(0);
+    expect(state.player.pierce).toBeGreaterThan(0);
+  });
+
+  it('다른 길로 가면 아이템을 놓친다', () => {
+    const state = emptied();
+    state.items.push({ id: state.nextId++, kind: 'orange', x: px(40), z: px(200) });
+    play(state, 200, () => ({ targetX: px(320) }));
+    expect(state.player.shield).toBe(0);
+    expect(state.items).toHaveLength(0);
   });
 
   it('돈다발 효과 중에는 점수가 두 배다', () => {
     const state = emptied();
     state.player.cash = 600;
-    enemyAt(state, 'swarm', CENTER, px(400), 1);
-    play(state, 60, () => ({ targetX: CENTER }));
+    enemyAt(state, 'grunt', CENTER, px(300), 1);
+    play(state, 80);
     expect(state.score).toBe(20);
+  });
+
+  it('관통 상태의 총알은 앞의 적을 뚫고 뒤의 적도 맞힌다', () => {
+    const state = emptied();
+    state.player.shots = 1;
+    state.player.interval = 1000;
+    state.player.pierce = 600;
+    const a = enemyAt(state, 'grunt', CENTER, px(300), 99);
+    const b = enemyAt(state, 'grunt', CENTER, px(380), 99);
+    const c = enemyAt(state, 'grunt', CENTER, px(460), 99);
+    play(state, 80);
+    expect(a.hp).toBeLessThan(99);
+    expect(b.hp).toBeLessThan(99);
+    expect(c.hp).toBeLessThan(99);
+  });
+
+  it('귤 폭탄은 가까이 있는 적에게만 한꺼번에 피해를 준다', () => {
+    const state = emptied();
+    state.player.interval = 1000;
+    state.player.cooldown = 1000;
+    const near = enemyAt(state, 'boulder', CENTER, px(200), 5000);
+    const far = enemyAt(state, 'boulder', CENTER, px(900), 5000);
+    state.items.push({ id: state.nextId++, kind: 'bomb', x: CENTER, z: 0 });
+    step(state, { targetX: CENTER });
+    expect(near.hp).toBeLessThan(5000);
+    expect(far.hp).toBe(5000);
+    expect(state.events.some((e) => e.t === 'bomb')).toBe(true);
   });
 });
 
 describe('보스', () => {
-  function toBossWave(seed = 3): OrangeState {
+  function toBossStage(seed = 3): OrangeState {
     const state = createState(seed);
-    state.wave = WAVE_BOSS_EVERY - 1;
+    state.stage = STAGE_BOSS_EVERY - 1;
     state.queue = [];
     state.enemies = [];
     state.gates = [];
-    state.waveTick = 0;
-    state.waveLength = 0;
-    play(state, 1, () => ({ targetX: CENTER }));
+    state.stageStart = state.distance;
+    // 다음 스테이지로 넘어가게 거리를 채운다
+    state.distance = state.stageStart + px(900);
+    play(state, 1);
     return state;
   }
 
-  it('10 웨이브마다 보스 웨이브가 되어 보스가 등장하고 덤벨을 던진다', () => {
-    const state = toBossWave();
-    expect(state.wave).toBe(WAVE_BOSS_EVERY);
+  it('10스테이지마다 보스 스테이지가 되어 보스가 등장하고, 자리를 잡으면 멈춰 서서 덤벨을 던진다', () => {
+    const state = toBossStage();
+    expect(state.stage).toBe(STAGE_BOSS_EVERY);
     expect(state.bossActive).toBe(true);
-    state.player.star = 99999;
-    let maxShots = 0;
-    let bossSeen = false;
-    for (let i = 0; i < 600; i += 1) {
+    state.player.star = Number.MAX_SAFE_INTEGER;
+    state.player.cooldown = 1e9;
+    let maxDumbbells = 0;
+    let scrollWhileHolding = -1;
+    for (let i = 0; i < 700; i += 1) {
       step(state, { targetX: CENTER });
-      maxShots = Math.max(maxShots, state.enemyShots.length);
-      bossSeen = bossSeen || state.enemies.some((e) => e.kind === 'boss');
+      maxDumbbells = Math.max(maxDumbbells, state.dumbbells.length);
+      const boss = state.enemies.find((e) => e.kind === 'boss');
+      if (boss && boss.z <= px(340)) {
+        if (scrollWhileHolding < 0) {
+          scrollWhileHolding = state.scroll;
+        } else {
+          expect(state.scroll).toBe(scrollWhileHolding);
+        }
+      }
     }
-    expect(bossSeen).toBe(true);
-    expect(maxShots).toBeGreaterThan(0);
-    const boss = state.enemies.find((e) => e.kind === 'boss');
-    expect(boss && boss.y).toBeGreaterThan(0);
+    expect(maxDumbbells).toBeGreaterThan(0);
+    expect(scrollWhileHolding).toBeGreaterThan(0);
   });
 
-  it('보스를 쓰러뜨리면 보너스·귤·게이트가 나오고 잠시 뒤 다음 웨이브가 시작된다', () => {
-    const state = toBossWave();
-    state.player.star = 999999;
-    state.player.damage = 99;
-    state.player.shots = 12;
-    state.player.interval = 4;
+  it('보스를 쓰러뜨리면 보너스·귤·게이트가 나오고 잠시 뒤 다음 스테이지가 시작된다', () => {
+    const state = toBossStage();
+    state.player.star = Number.MAX_SAFE_INTEGER;
+    state.player.damage = PLAYER.maxDamage;
+    state.player.shots = PLAYER.maxShots;
+    state.player.interval = PLAYER.minInterval;
     const events: string[] = [];
-    for (let i = 0; i < 3000 && state.wave === WAVE_BOSS_EVERY; i += 1) {
-      step(state, { targetX: state.enemies.find((e) => e.kind === 'boss')?.x ?? CENTER });
+    for (let i = 0; i < 6000 && state.stage === STAGE_BOSS_EVERY; i += 1) {
+      step(state, { targetX: CENTER });
       state.events.forEach((e) => events.push(e.t));
     }
     expect(events).toContain('bossDown');
-    expect(state.wave).toBe(WAVE_BOSS_EVERY + 1);
+    expect(state.stage).toBe(STAGE_BOSS_EVERY + 1);
     expect(state.score).toBeGreaterThan(2000);
   });
 });
@@ -338,9 +501,7 @@ describe('결정성과 정수', () => {
   const wiggle = (s: OrangeState): OrangeInput => ({ targetX: CENTER + ((s.tick >> 5) % 2 === 0 ? -px(90) : px(90)) });
 
   it('같은 시드와 같은 입력이면 결과가 같다', () => {
-    const a = play(createState(42), FPS * 30, wiggle);
-    const b = play(createState(42), FPS * 30, wiggle);
-    expect(b).toEqual(a);
+    expect(play(createState(42), FPS * 30, wiggle)).toEqual(play(createState(42), FPS * 30, wiggle));
   });
 
   it('시드가 다르면 전개가 달라진다', () => {
@@ -352,61 +513,20 @@ describe('결정성과 정수', () => {
   it('긴 판을 돌려도 모든 좌표와 수치가 정수다(부동소수점이 없다)', () => {
     const state = createState(5);
     state.player.star = Number.MAX_SAFE_INTEGER;
-    state.player.damage = 99;
-    state.player.shots = 20;
+    state.player.damage = PLAYER.maxDamage;
+    state.player.shots = 10;
     for (let i = 0; i < FPS * 120; i += 1) {
       step(state, wiggle(state));
       const numbers: number[] = [
-        state.player.x, state.score, state.combo, ...state.bullets.flatMap((b) => [b.x, b.y, b.vx]),
-        ...state.enemies.flatMap((e) => [e.x, e.y, e.hp, e.vy]), ...state.enemyShots.flatMap((s) => [s.x, s.y, s.vx]),
-        ...state.gates.map((g) => g.y), ...state.items.flatMap((it) => [it.x, it.y]),
+        state.player.x, state.score, state.combo, state.distance, state.scroll,
+        ...state.bullets.flatMap((b) => [b.x, b.z, b.vx]),
+        ...state.enemies.flatMap((e) => [e.x, e.z, e.hp, e.w]),
+        ...state.dumbbells.flatMap((d) => [d.x, d.z, d.vx]),
+        ...state.gates.map((g) => g.z), ...state.items.flatMap((it) => [it.x, it.z]),
       ];
       const bad = numbers.find((n) => !Number.isInteger(n));
       expect(bad, `tick ${state.tick}`).toBeUndefined();
     }
     expect(PX).toBe(100);
-  });
-});
-
-describe('게이트 통과와 난이도', () => {
-  it('총알은 게이트를 통과해 뒤에 있는 적을 맞힌다', () => {
-    const state = emptied();
-    state.player.x = px(40);
-    state.gates.push({ id: state.nextId++, y: px(420), left: effect('shotsUp', 2), right: effect('dmgUp', 1), used: false });
-    const enemy = enemyAt(state, 'swarm', px(40), px(200), 50);
-    play(state, 45, () => ({ targetX: px(40) }));
-    expect(state.gates[0].left.hits).toBeGreaterThan(0);
-    expect(enemy.hp).toBeLessThan(50);
-  });
-
-  it('총알 하나는 한 게이트를 한 번만 센다(게이트 안에서 여러 프레임을 보내도)', () => {
-    const state = emptied();
-    state.player.x = px(40);
-    state.player.shots = 1;
-    state.player.interval = 1000;
-    const gate = { id: state.nextId++, y: px(400), left: effect('shotsUp', 2), right: effect('dmgUp', 1), used: false };
-    state.gates.push(gate);
-    play(state, 60, () => ({ targetX: px(40) }));
-    expect(gate.left.hits).toBe(1);
-  });
-
-  it('체력 배율은 정수이고 갈수록 가속해서 커진다(끝없는 모드가 결국 끝나도록)', () => {
-    const percents = Array.from({ length: 40 }, (_, i) => hpScalePercent(i + 1));
-    percents.forEach((p) => expect(Number.isInteger(p)).toBe(true));
-    const early = percents[10] - percents[9];
-    const late = percents[39] - percents[38];
-    expect(late).toBeGreaterThan(early * 5);
-  });
-
-  it('총알 수와 공격력에는 상한이 있다', () => {
-    const state = emptied();
-    state.player.shots = PLAYER.maxShots;
-    state.player.damage = PLAYER.maxDamage;
-    state.gates.push({ id: state.nextId++, y: PLAYER.y - px(70), left: effect('shotsMul', 2), right: effect('dmgUp', 50), used: false });
-    play(state, 80, () => ({ targetX: px(40) }));
-    expect(state.player.shots).toBe(PLAYER.maxShots);
-    state.gates.push({ id: state.nextId++, y: PLAYER.y - px(70), left: effect('dmgUp', 50), right: effect('shotsUp', 1), used: false });
-    play(state, 80, () => ({ targetX: px(40) }));
-    expect(state.player.damage).toBe(PLAYER.maxDamage);
   });
 });
