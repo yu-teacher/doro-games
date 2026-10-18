@@ -39,7 +39,7 @@ piece = "\n".join(l for l in piece.splitlines() if not l.lstrip().startswith("#"
 
 upstreams = re.findall(r"upstream\s+\w+\s*\{[^}]*\}", piece)
 locations = re.findall(r"location\s+[^{]+\{[^}]*\}", piece)
-if len(upstreams) != 2 or len(locations) != 3:
+if len(upstreams) != 2 or len(locations) != 4:
     sys.exit(f"조각 파일 구조가 예상과 다르다(upstream {len(upstreams)}, location {len(locations)})")
 
 def indent(block, n):

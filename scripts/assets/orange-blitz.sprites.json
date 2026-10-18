@@ -1,0 +1,51 @@
+{
+  "sprites": {
+    "hero": {
+      "src": "costumes/costumes-024-peashooter-hat.webp",
+      "cutout": "adaptive",
+      "height": 128
+    },
+    "swarm": {
+      "src": "characters/characters-011-flying-swarm.png",
+      "crop": [
+        0.14,
+        0.38,
+        0.56,
+        0.8
+      ],
+      "cutout": "adaptive",
+      "height": 96
+    },
+    "slime": {
+      "src": "characters/characters-018-slime.gif",
+      "cutout": "adaptive",
+      "height": 96
+    },
+    "boss": {
+      "src": "characters/characters-024-buff-boss.jpg",
+      "cutout": "adaptive",
+      "height": 300
+    },
+    "chicken": {
+      "src": "costumes/costumes-026-chicken-suit.png",
+      "crop": [
+        0.0,
+        0.06,
+        1.0,
+        1.0
+      ],
+      "cutout": "adaptive",
+      "height": 64
+    },
+    "star": {
+      "src": "items/items-002-sparkle-star.gif",
+      "cutout": "adaptive",
+      "height": 64
+    },
+    "bg": {
+      "src": "backgrounds/backgrounds-009-forest-eggs.gif",
+      "cutout": "none",
+      "width": 540
+    }
+  }
+}
