@@ -16,6 +16,7 @@ const RESTART_LOCK_MS = 700;
 /** 한 번에 따라잡을 수 있는 최대 시간. 탭이 숨겨졌다 돌아왔을 때 한꺼번에 진행하지 않게 한다. */
 const MAX_CATCH_UP_MS = 100;
 const SEED_BOUND = 0x100000000;
+const STAGE_LENGTH_FOR_DEBUG = 90000;
 
 function newSeed(): number {
   const buffer = new Uint32Array(1);
@@ -83,6 +84,17 @@ export default function OrangeGame({ best, onStart, onGameOver }: GameComponentP
     const begin = () => {
       audio.unlock();
       state = createState(newSeed());
+      if (import.meta.env.DEV) {
+        // 개발 서버 전용: ?stage=10 으로 그 스테이지부터 시작(화면 확인용, 무적). 운영 빌드에는 들어가지 않는다.
+        const jump = Number(new URLSearchParams(window.location.search).get('stage'));
+        if (Number.isInteger(jump) && jump > 1) {
+          state.queue = [];
+          state.stage = jump - 1;
+          state.player.star = Number.MAX_SAFE_INTEGER;
+          state.player.shots = 8;
+          state.distance = state.stageStart + STAGE_LENGTH_FOR_DEBUG;
+        }
+      }
       fx = createEffects();
       phase = 'playing';
       accumulator = 0;
