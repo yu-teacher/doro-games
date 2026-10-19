@@ -77,8 +77,9 @@ docker cp "$NEW" "$CONTAINER:/tmp/nginx-assets-test.conf"
 if docker exec "$CONTAINER" nginx -t -c /tmp/nginx-assets-test.conf; then log "새 설정 검증 통과(nginx -t)"; else docker exec "$CONTAINER" rm -f /tmp/nginx-assets-test.conf; die "새 설정 검증 실패. 아무것도 바꾸지 않았다"; fi
 docker exec "$CONTAINER" rm -f /tmp/nginx-assets-test.conf
 log "변경 내용(diff, 추가되는 줄만 있어야 한다):"
-diff -u "$CONF" "$NEW" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | cut -c1-110
-if diff -u "$CONF" "$NEW" | grep -E '^-' | grep -vqE '^---'; then die "지워지는 줄이 있다. 중단"; fi
+# diff 는 차이가 있으면 종료 코드 1 을 돌려주므로(set -e + pipefail) 출력 파이프는 || true 로 받는다
+{ diff -u "$CONF" "$NEW" || true; } | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | cut -c1-110 || true
+if { diff -u "$CONF" "$NEW" || true; } | grep -E '^-' | grep -vqE '^---'; then die "지워지는 줄이 있다. 중단"; fi
 [ "$APPLY" = true ] || { log "검증만 하고 종료 (--apply 로 반영)"; exit 0; }
 
 cp -p "$CONF" "$CONF.bak-assets-$TS"
