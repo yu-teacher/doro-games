@@ -15,4 +15,4 @@ web/dist/
 .DS_Store
 
 # 게임 그림 파일은 git 에 올리지 않는다(객체 저장소에 올린다). scripts/assets/build_game_assets.py 가 만든다.
-web/public/assets/
+web/public/art/

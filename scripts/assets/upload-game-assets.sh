@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 가공한 게임 그림(build_game_assets.py 의 출력 폴더)을 MinIO 버킷에 올린다. 추가 도구 없이 curl(7.75+)의 SigV4 서명만 쓴다.
 #
-#   MINIO_ROOT_USER=... MINIO_ROOT_PASSWORD=... scripts/assets/upload-game-assets.sh web/public/assets
+#   MINIO_ROOT_USER=... MINIO_ROOT_PASSWORD=... scripts/assets/upload-game-assets.sh web/public/art
 #
 # 서버의 MinIO 는 127.0.0.1 에만 열려 있으므로 서버에서 실행하거나(폴더를 scp 로 보낸 뒤) SSH 터널을 쓴다.
 #   MINIO_ENDPOINT   기본 http://127.0.0.1:9000

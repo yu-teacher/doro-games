@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameComponentProps } from '../registry';
-import { frameCount, loadSprites, type Sprites } from './assets';
+import { ASSET_DIR, frameCount, loadSprites, type Sprites } from './assets';
 import { createAudio, tempoFor, type Audio, type MusicMood } from './audio';
 import { applyEvent, createEffects, updateEffects, type Effects } from './effects';
 import { FIELD, STEP_MS, createState, isInfinite, step, type OrangeState } from './engine';
@@ -10,7 +10,7 @@ import { drawScene, type Phase } from './render';
 import { VIEW } from './view';
 
 /** 그림 파일이 있는 곳. 운영에서는 게이트웨이가 이 경로를 객체 저장소로 연결한다. */
-const ASSET_BASE = `${import.meta.env.BASE_URL}assets/`;
+const ASSET_BASE = `${import.meta.env.BASE_URL}${ASSET_DIR}/`;
 /** 판이 끝난 직후에는 이 시간 동안 재시작 입력을 무시한다(움직이던 손가락이 바로 다시 시작하지 않게) */
 const RESTART_LOCK_MS = 700;
 /** 한 번에 따라잡을 수 있는 최대 시간. 탭이 숨겨졌다 돌아왔을 때 한꺼번에 진행하지 않게 한다. */

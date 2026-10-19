@@ -1,13 +1,13 @@
 # 게임 그림(에셋) 관리
 
-게임 그림은 **git 에 올리지 않는다.** 가공한 파일을 객체 저장소(MinIO)의 공개 읽기 전용 버킷에 두고, 게이트웨이가 `/games/assets/` 로 그대로 전달한다.
+게임 그림은 **git 에 올리지 않는다.** 가공한 파일을 객체 저장소(MinIO)의 공개 읽기 전용 버킷에 두고, 게이트웨이가 `/games/art/` 로 그대로 전달한다.
 그림이 없어도 게임은 돈다(도형으로 대신 그린다). 그래서 CI·테스트·새 개발 환경에는 그림이 필요 없다.
 
 ## 흐름
 ```
-원본 모음 ──(build_game_assets.py)──▶ web/public/assets/ (git 제외) ──(upload-game-assets.sh)──▶ MinIO doro-games-assets
+원본 모음 ──(build_game_assets.py)──▶ web/public/art/ (git 제외) ──(upload-game-assets.sh)──▶ MinIO doro-games-assets
                                                                                       ▲
-브라우저 ── /games/assets/manifest.json, *.webp ── 게이트웨이(/games/assets/) ─────────┘
+브라우저 ── /games/art/manifest.json, *.webp ── 게이트웨이(/games/art/) ─────────┘
 ```
 
 - `scripts/assets/orange-blitz.sprites.json`: **어떤 원본을 어떻게 가공할지**(잘라낼 영역, 배경 제거, 크기). 이 파일만 git 에 있다.
@@ -19,19 +19,19 @@
 ```bash
 pip install pillow
 python3 scripts/assets/build_game_assets.py --source ../dororong-photos \
-    --spec scripts/assets/orange-blitz.sprites.json --out web/public/assets --preview /tmp/preview.jpg
-cd web && npm run dev      # /games/assets/ 를 Vite 가 web/public/assets 에서 바로 서빙한다
+    --spec scripts/assets/orange-blitz.sprites.json --out web/public/art --preview /tmp/preview.jpg
+cd web && npm run dev      # /games/art/ 를 Vite 가 web/public/art 에서 바로 서빙한다
 ```
 `--preview` 는 결과를 어두운 배경 위에 늘어놓은 확인용 이미지를 만든다. 스프라이트가 마음에 안 들면 스펙의 `crop`·`src` 를 고쳐 다시 만든다.
 
 ## 서버에 올리기 (그림을 바꿀 때만)
 MinIO 는 서버의 127.0.0.1 에만 열려 있어서 서버에서 업로드를 실행한다.
 ```bash
-rsync -a web/public/assets/ mini:doro-games-assets/
+rsync -a web/public/art/ mini:doro-games-assets/
 ssh mini 'set -a; . ~/doro-blog/.env; set +a; MINIO_ROOT_USER="${MINIO_ROOT_USER:-doro_admin}" bash -s -- ~/doro-games-assets' \
     < scripts/assets/upload-game-assets.sh
 ```
-게이트웨이에 `/games/assets/` 가 아직 없다면 한 번만 반영한다(CSP 는 기존대로).
+게이트웨이에 `/games/art/` 가 아직 없다면 한 번만 반영한다(CSP 는 기존대로).
 ```bash
 scp deploy/gateway-games.conf mini:doro-games/gateway-games.conf
 ssh mini 'bash -s -- --dry-run' < scripts/apply-gateway-games.sh               # 먼저 검증만
