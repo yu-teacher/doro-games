@@ -38,7 +38,18 @@ piece = open(piece_path, encoding="utf-8").read()
 piece = "\n".join(l for l in piece.splitlines() if not l.lstrip().startswith("#"))  # 주석 줄은 넣지 않는다
 
 upstreams = re.findall(r"upstream\s+\w+\s*\{[^}]*\}", piece)
-locations = re.findall(r"location\s+[^{]+\{[^}]*\}", piece)
+def top_level_locations(text):
+    """중괄호 짝을 맞춰 location 블록을 통째로 꺼낸다(안에 limit_except 같은 중첩 블록이 있어도 잘리지 않는다)."""
+    found = []
+    for m in re.finditer(r"location\s+[^{]+\{", text):
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            depth += {"{": 1, "}": -1}.get(text[i], 0)
+            i += 1
+        found.append(text[m.start():i])
+    return found
+
+locations = top_level_locations(piece)
 if len(upstreams) != 2 or len(locations) != 4:
     sys.exit(f"조각 파일 구조가 예상과 다르다(upstream {len(upstreams)}, location {len(locations)})")
 
@@ -55,7 +66,8 @@ if refresh and "games_web_upstream" in conf:
     # 이전에 넣은 블록(upstream 2개 + 표시 주석부터 location = /games 까지)만 정확히 걷어내고 아래에서 다시 넣는다
     conf, n1 = re.subn(r"\n    upstream games_\w+\s*\{[^}]*\}\n", "", conf)
     conf, n2 = re.subn(r"        # 도로 게임 천국 \(/games/\).*?location = /games \{[^}]*\}\n\n", "", conf, flags=re.S)
-    if n1 != 2 or n2 != 1 or "games_" in conf.replace("games_group", ""):
+    # 걷어낸 뒤에 이 블록이 쓰던 upstream 이름이 남아 있으면 안 된다(다른 설정의 쿠키 이름 doro_games_session 같은 것은 상관없다)
+    if n1 != 2 or n2 != 1 or re.search(r"games_(web|api)_upstream", conf):
         sys.exit(f"기존 도로 게임 천국 블록을 정확히 걷어내지 못했다(upstream {n1}, location 블록 {n2}). 수동 확인 필요")
 if "games_web_upstream" in conf:
     print("already"); open(out_path, "w", encoding="utf-8").write(conf); sys.exit(0)
