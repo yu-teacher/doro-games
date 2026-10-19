@@ -1,6 +1,5 @@
 package com.doro.games.support;
 
-import com.doro.games.infra.guard.GuardTuples;
 import com.hunnit_beasts.doro.sdk.security.jwks.JwksKeyProvider;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.servlet.http.Cookie;
@@ -73,8 +72,6 @@ public abstract class GamesHttpTestBase {
         IAM.forcedTokenStatus = 0;
         IAM.accessTtlSeconds = 900;
     }
-
-    @Autowired protected GuardTuples guardTuples;
 
     // ------------------------------------------------------------------ 도우미
 
