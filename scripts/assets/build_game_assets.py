@@ -2,7 +2,7 @@
 """게임 그림을 가공해 manifest.json 과 함께 내보낸다. 그림 파일은 git 에 올리지 않는다(객체 저장소에 올린다).
 
   python3 scripts/assets/build_game_assets.py --source ../dororong-photos \\
-      --spec scripts/assets/orange-blitz.sprites.json --out web/public/assets [--preview preview.jpg]
+      --spec scripts/assets/orange-blitz.sprites.json --out web/public/art [--preview preview.jpg]
 
 스펙 파일(JSON)이 "어떤 원본을 어떻게 가공할지" 를 정한다. 원본 경로는 --source 기준의 상대 경로다.
   src      원본 파일(GIF 는 첫 프레임을 쓴다)

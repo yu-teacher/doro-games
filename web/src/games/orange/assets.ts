@@ -4,6 +4,12 @@
  * 그래서 그림이 없는 환경(테스트, 새로 받은 개발 환경)에서도 게임은 항상 돈다.
  */
 
+/**
+ * 게임 그림·목소리가 있는 폴더 이름(사이트 경로 아래). `assets` 로 하면 안 된다: Vite 가 만든 앱 번들(JS·CSS)이 /games/assets/ 에 들어가서
+ * 게이트웨이가 그 경로를 객체 저장소로 돌리는 순간 앱이 통째로 깨진다(2026-10-19 장애).
+ */
+export const ASSET_DIR = 'art';
+
 export type SpriteKey = 'hero' | 'swarm' | 'slime' | 'runner' | 'sniper' | 'boss' | 'orange' | 'chicken' | 'cash' | 'star' | 'pierce' | 'bomb' | 'bg';
 
 export const SPRITE_KEYS: readonly SpriteKey[] = ['hero', 'swarm', 'slime', 'runner', 'sniper', 'boss', 'orange', 'chicken', 'cash', 'star', 'pierce', 'bomb', 'bg'];

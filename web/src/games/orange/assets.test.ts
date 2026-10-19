@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FRAME_MS, frameAt, parseManifest, variantOf, type Sprites } from './assets';
+import { ASSET_DIR, FRAME_MS, frameAt, parseManifest, variantOf, type Sprites } from './assets';
 
 describe('parseManifest', () => {
   it('올바른 manifest 는 알려진 키만 남긴다', () => {
@@ -77,5 +77,12 @@ describe('움직이는 그림', () => {
     expect(frameAt(4, FRAME_MS)).toBe(1);
     expect(frameAt(4, FRAME_MS * 4)).toBe(0);
     expect(frameAt(4, 0, 3)).toBe(3);
+  });
+});
+
+describe('그림 폴더 이름', () => {
+  it('Vite 가 앱 번들을 내보내는 폴더(assets)와 겹치지 않는다', () => {
+    expect(ASSET_DIR).not.toBe('assets');
+    expect(ASSET_DIR).toMatch(/^[a-z0-9-]+$/);
   });
 });
