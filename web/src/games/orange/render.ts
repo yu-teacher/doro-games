@@ -4,6 +4,7 @@ import { COLORS } from './effects';
 import {
   FIELD,
   PX,
+  px,
   comboMultiplier,
   firepower,
   firepowerCap,
@@ -354,60 +355,115 @@ function drawActor(ctx: CanvasRenderingContext2D, scene: Scene, enemy: Enemy): v
   }
 }
 
+/** 적이 쏘는 것은 어두운 도로 위에서도 눈에 띄도록 붉은 빛 번짐을 두른다. */
+const HAZARD = '#ff4d3d';
+
+function hazardGlow(ctx: CanvasRenderingContext2D, blur: number): void {
+  ctx.shadowColor = HAZARD;
+  ctx.shadowBlur = blur;
+}
+
 function drawSeed(ctx: CanvasRenderingContext2D, x: number, z: number, tick: number): void {
   const at = project(x, z);
-  const size = SIZE.dumbbell * 0.6 * at.scale;
+  const size = SIZE.dumbbell * 0.75 * at.scale;
   ctx.save();
   ctx.translate(at.x, at.y - size * 0.9);
   ctx.rotate(tick * 0.25);
-  ctx.fillStyle = '#7c2d12';
+  hazardGlow(ctx, 12 * at.scale + 4);
+  ctx.fillStyle = '#fb923c';
+  ctx.strokeStyle = '#fff7ed';
+  ctx.lineWidth = Math.max(2, 3 * at.scale);
   ctx.beginPath();
   ctx.ellipse(0, 0, size * 0.4, size * 0.65, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#fdba74';
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fef3c7';
   ctx.beginPath();
   ctx.ellipse(-size * 0.1, -size * 0.2, size * 0.12, size * 0.25, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
 
+/** 날아오는 것이 닿을 자리를 바닥에 붉은 표적으로 미리 보여 준다(가까워질수록 진해진다). */
+function drawImpactMarkers(ctx: CanvasRenderingContext2D, state: OrangeState): void {
+  for (const d of state.dumbbells) {
+    if (d.style === 'snow' || d.vz <= 0 || d.z > px(520)) {
+      continue;
+    }
+    const impactX = d.x + Math.trunc((d.vx * d.z) / d.vz);
+    const at = project(Math.min(FIELD.width, Math.max(0, impactX)), 0);
+    const closeness = 1 - d.z / px(520);
+    const pulse = 0.65 + Math.sin(state.tick * 0.4) * 0.35;
+    ctx.save();
+    ctx.globalAlpha = Math.min(0.85, (0.15 + closeness * 0.7) * pulse + 0.1);
+    ctx.strokeStyle = HAZARD;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(at.x, at.y, 22, 8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(at.x - 13, at.y);
+    ctx.lineTo(at.x + 13, at.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function drawDumbbell(ctx: CanvasRenderingContext2D, x: number, z: number, tick: number, style: DumbbellStyle = 'dumbbell'): void {
   const at = project(x, z);
-  const size = SIZE.dumbbell * at.scale;
+  const size = SIZE.dumbbell * 1.25 * at.scale;
   ctx.save();
   ctx.translate(at.x, at.y - size * 0.6);
+  hazardGlow(ctx, 14 * at.scale + 4);
+  ctx.lineWidth = Math.max(2, 3 * at.scale);
   if (style === 'seal') {
     // 어명 인장: 붉은 도장
     ctx.rotate(Math.sin(tick * 0.1) * 0.2);
-    ctx.fillStyle = '#b91c1c';
+    ctx.fillStyle = '#dc2626';
+    ctx.strokeStyle = '#fef3c7';
     ctx.fillRect(-size * 0.45, -size * 0.45, size * 0.9, size * 0.9);
+    ctx.strokeRect(-size * 0.45, -size * 0.45, size * 0.9, size * 0.9);
+    ctx.shadowBlur = 0;
     ctx.fillStyle = '#fde047';
     ctx.fillRect(-size * 0.28, -size * 0.1, size * 0.56, size * 0.2);
     ctx.fillRect(-size * 0.1, -size * 0.28, size * 0.2, size * 0.56);
   } else if (style === 'bullet') {
-    // 탐정의 총알: 길쭉한 황동 탄
-    ctx.fillStyle = '#fbbf24';
+    // 탐정의 총알: 길쭉한 밝은 탄
+    ctx.fillStyle = '#fde047';
+    ctx.strokeStyle = '#fff7ed';
     ctx.beginPath();
-    ctx.ellipse(0, 0, size * 0.18, size * 0.42, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, size * 0.2, size * 0.46, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#92400e';
-    ctx.fillRect(-size * 0.18, size * 0.2, size * 0.36, size * 0.14);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#b45309';
+    ctx.fillRect(-size * 0.2, size * 0.2, size * 0.4, size * 0.16);
   } else if (style === 'snow') {
     // 펭귄의 눈덩이
-    ctx.fillStyle = '#e0f2fe';
+    ctx.fillStyle = '#f0f9ff';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = Math.max(3, 4 * at.scale);
     ctx.beginPath();
     ctx.arc(0, 0, size * 0.62, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#7dd3fc';
-    ctx.lineWidth = 3;
     ctx.stroke();
   } else {
+    // 근육의 덤벨: 밝은 쇠색 + 흰 윤곽(어두운 도로에서도 보이게)
     ctx.rotate(tick * 0.2);
-    ctx.fillStyle = '#475569';
+    ctx.strokeStyle = '#f8fafc';
+    ctx.fillStyle = '#e2e8f0';
     ctx.fillRect(-size * 0.1, -size * 0.5, size * 0.2, size);
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(-size * 0.32, -size * 0.55, size * 0.64, size * 0.22);
-    ctx.fillRect(-size * 0.32, size * 0.33, size * 0.64, size * 0.22);
+    ctx.strokeRect(-size * 0.1, -size * 0.5, size * 0.2, size);
+    ctx.fillStyle = '#f1f5f9';
+    ctx.fillRect(-size * 0.34, -size * 0.58, size * 0.68, size * 0.26);
+    ctx.fillRect(-size * 0.34, size * 0.32, size * 0.68, size * 0.26);
+    ctx.strokeRect(-size * 0.34, -size * 0.58, size * 0.68, size * 0.26);
+    ctx.strokeRect(-size * 0.34, size * 0.32, size * 0.68, size * 0.26);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = HAZARD;
+    ctx.fillRect(-size * 0.34, -size * 0.5, size * 0.68, size * 0.08);
+    ctx.fillRect(-size * 0.34, size * 0.4, size * 0.68, size * 0.08);
   }
   ctx.restore();
 }
@@ -597,6 +653,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
   drawRoad(ctx, scene);
 
   // 먼 것부터 그린다(가까운 것이 먼 것을 가린다)
+  drawImpactMarkers(ctx, state);
   const drawables: Drawable[] = [];
   state.gates.forEach((gate) => drawables.push({ z: gate.z, draw: () => drawGate(ctx, gate, state.tick) }));
   state.items.forEach((item) =>
