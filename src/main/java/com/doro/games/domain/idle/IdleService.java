@@ -2,6 +2,7 @@ package com.doro.games.domain.idle;
 
 import com.doro.games.common.exception.ErrorCode;
 import com.doro.games.common.exception.GamesException;
+import com.doro.games.domain.game.GameRepository;
 import com.doro.games.domain.idle.IdleDtos.IdleView;
 import com.doro.games.domain.idle.IdleDtos.ProducerView;
 import com.doro.games.domain.user.service.GameUserService;
@@ -29,9 +30,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class IdleService {
 
+    /** 이 서비스가 속한 게임. 게임이 닫혀 있으면 API 도 닫힌다(로비에서 내린 게임이 뒤에서 계속 동작하지 않게). */
+    static final String GAME_SLUG = "orange-farm";
+
     private final JdbcClient jdbc;
     private final GameUserService userService;
     private final Clock clock;
+    private final GameRepository gameRepository;
 
     /** 한 줄(잠금) */
     private static final class Save {
@@ -47,8 +52,15 @@ public class IdleService {
     /** 이번 요청에서 정산된 값(응답에 알려 준다) */
     private record Settlement(long seconds, long gained, boolean capped) {}
 
+    private void requireOpen() {
+        if (gameRepository.findBySlug(GAME_SLUG).filter(g -> g.isEnabled()).isEmpty()) {
+            throw new GamesException(ErrorCode.GAME_NOT_FOUND);
+        }
+    }
+
     @Transactional
     public IdleView view(DoroUser doroUser) {
+        requireOpen();
         UUID userId = userService.getOrCreateUser(doroUser).getId();
         Save save = lock(userId);
         Settlement settlement = settle(save, clock.instant());
@@ -59,6 +71,7 @@ public class IdleService {
     /** 귤 따기: 서버가 잰 시간 동안 사람이 누를 수 있는 횟수(초당 15, 한꺼번에 최대 100)까지만 인정한다. 넘친 횟수는 조용히 버린다. */
     @Transactional
     public IdleView tap(DoroUser doroUser, int count) {
+        requireOpen();
         UUID userId = userService.getOrCreateUser(doroUser).getId();
         Save save = lock(userId);
         Instant now = clock.instant();
@@ -79,6 +92,7 @@ public class IdleService {
 
     @Transactional
     public IdleView buyProducer(DoroUser doroUser, int index, int amount) {
+        requireOpen();
         if (index < 0 || index >= IdleRules.PRODUCER_COUNT || !IdleRules.BUY_AMOUNTS.contains(amount)) {
             throw new GamesException(ErrorCode.INVALID_INPUT);
         }
@@ -98,6 +112,7 @@ public class IdleService {
 
     @Transactional
     public IdleView buyTapUpgrade(DoroUser doroUser, int amount) {
+        requireOpen();
         if (!IdleRules.BUY_AMOUNTS.contains(amount)) {
             throw new GamesException(ErrorCode.INVALID_INPUT);
         }

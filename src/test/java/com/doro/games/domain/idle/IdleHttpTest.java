@@ -1,6 +1,8 @@
 package com.doro.games.domain.idle;
 
 import com.doro.games.support.GamesHttpTestBase;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -8,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -60,6 +63,20 @@ class IdleHttpTest extends GamesHttpTestBase {
 
     @Autowired
     private MutableClock clock;
+
+    @Autowired
+    private JdbcClient jdbc;
+
+    /** 귤농장은 마이그레이션(V10)으로 닫혀 있다. 시험하는 동안만 열고 끝나면 원래대로 닫는다. */
+    @BeforeEach
+    void openFarm() {
+        jdbc.sql("UPDATE games SET enabled = TRUE WHERE slug = 'orange-farm'").update();
+    }
+
+    @AfterEach
+    void closeFarm() {
+        jdbc.sql("UPDATE games SET enabled = FALSE WHERE slug = 'orange-farm'").update();
+    }
 
     private ResultActions tap(TestUser user, int count) throws Exception {
         return send(user, post("/api/v1/idle/tap").contentType(MediaType.APPLICATION_JSON).content("{\"count\":" + count + "}"));
@@ -175,5 +192,19 @@ class IdleHttpTest extends GamesHttpTestBase {
                 .andExpect(jsonPath("$.data.producers[0].nextMilestone").value(25))
                 // 10 × 1 × 2 = 20, 도감 1종 +4% → 20
                 .andExpect(jsonPath("$.data.ratePerSecond").value(20));
+    }
+
+    @Test
+    @DisplayName("게임이 닫혀 있으면 농장 API 도 닫힌다(404)")
+    void closedFarmRejectsEverything() throws Exception {
+        TestUser user = newUser();
+        tap(user, 5).andExpect(status().isOk());
+        jdbc.sql("UPDATE games SET enabled = FALSE WHERE slug = 'orange-farm'").update();
+        send(user, get("/api/v1/idle")).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("GAME-404-01"));
+        tap(user, 1).andExpect(status().isNotFound());
+        buy(user, 0, 1).andExpect(status().isNotFound());
+        // 다시 열면 저장된 농장이 그대로 있다(닫는 것은 데이터를 지우지 않는다)
+        jdbc.sql("UPDATE games SET enabled = TRUE WHERE slug = 'orange-farm'").update();
+        send(user, get("/api/v1/idle")).andExpect(status().isOk()).andExpect(jsonPath("$.data.oranges").value(5));
     }
 }
