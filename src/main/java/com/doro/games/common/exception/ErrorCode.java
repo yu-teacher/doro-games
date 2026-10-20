@@ -10,6 +10,7 @@ public enum ErrorCode {
     // 400 Bad Request
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "COMMON-400-01", "잘못된 입력값입니다."),
     SCORE_REJECTED(HttpStatus.BAD_REQUEST, "SCORE-400-01", "기록을 인정할 수 없습니다."),
+    IDLE_CANNOT_AFFORD(HttpStatus.BAD_REQUEST, "IDLE-400-01", "귤이 모자라거나 더 키울 수 없어요."),
 
     // 401 Unauthorized
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH-401-01", "인증 자격 증명이 유효하지 않거나 누락되었습니다."),

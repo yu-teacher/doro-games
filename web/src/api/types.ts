@@ -59,3 +59,32 @@ export interface GameHighlight {
   myBest: number | null;
   myRank: number | null;
 }
+
+export interface IdleProducer {
+  index: number;
+  name: string;
+  level: number;
+  nextCost: number;
+  baseRate: number;
+  ratePerSecond: number;
+  revealed: boolean;
+}
+
+/** 도로롱 귤농장: 서버가 계산한 농장의 모습 */
+export interface IdleView {
+  oranges: number;
+  totalEarned: number;
+  ratePerSecond: number;
+  multiplierPercent: number;
+  tapLevel: number;
+  tapPower: number;
+  tapUpgradeCost: number;
+  collected: number;
+  collectionTotal: number;
+  producers: IdleProducer[];
+  serverTimeMillis: number;
+  offlineSeconds: number;
+  offlineGained: number;
+  offlineCapped: boolean;
+  orangeCap: number;
+}

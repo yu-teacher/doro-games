@@ -3,6 +3,7 @@ import OrangeThumbnail from '../components/OrangeThumbnail';
 import Thumbnail2048 from '../components/Thumbnail2048';
 import RunnerThumbnail from '../components/RunnerThumbnail';
 import Game2048 from './g2048/Game2048';
+import FarmGame from './farm/FarmGame';
 import OrangeGame from './orange/OrangeGame';
 import RunnerGame from './runner/RunnerGame';
 
@@ -21,7 +22,11 @@ export const GAME_COMPONENTS: Record<string, ComponentType<GameComponentProps>> 
   runner: RunnerGame,
   '2048': Game2048,
   'orange-blitz': OrangeGame,
+  'orange-farm': FarmGame,
 };
+
+/** 판 시작·점수 제출이 없는 게임(진행 상황을 서버가 계속 저장하는 방치형). 페이지가 랭킹·기록 대신 게임만 보여 준다. */
+export const RUNLESS_GAMES: ReadonlySet<string> = new Set(['orange-farm']);
 
 /** 로비 카드의 대표 그림. 없는 게임은 카드가 그림 없이 나온다. */
 export const GAME_THUMBNAILS: Record<string, ComponentType> = {

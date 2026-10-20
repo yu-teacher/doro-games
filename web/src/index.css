@@ -65,3 +65,18 @@ body {
     min-height: 36px;
   }
 }
+
+/* 도로롱 귤농장: 탭할 때 떠오르는 숫자 */
+@keyframes farm-float {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -48px);
+  }
+}
+.farm-float {
+  animation: farm-float 0.8s ease-out forwards;
+}
