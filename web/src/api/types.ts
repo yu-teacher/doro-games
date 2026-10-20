@@ -73,6 +73,10 @@ export interface IdleProducer {
   baseRate: number;
   ratePerSecond: number;
   revealed: boolean;
+  /** 닿은 마일스톤 수, 그 도로롱의 생산 배수, 다음 마일스톤 레벨(0 이면 모두 닿음) */
+  milestones: number;
+  outputMultiplier: number;
+  nextMilestone: number;
 }
 
 /** 도로롱 귤농장: 서버가 계산한 농장의 모습 */
@@ -86,6 +90,10 @@ export interface IdleView {
   tapUpgradeCost: number;
   collected: number;
   collectionTotal: number;
+  /** 도감 완성도 보너스(%)와 다음 목표(종류 수, 그때의 배율). 모두 달성했으면 0 */
+  collectionBonusPercent: number;
+  nextCollectionTarget: number;
+  nextCollectionPercent: number;
   producers: IdleProducer[];
   serverTimeMillis: number;
   offlineSeconds: number;

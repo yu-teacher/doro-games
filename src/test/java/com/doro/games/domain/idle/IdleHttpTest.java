@@ -152,4 +152,28 @@ class IdleHttpTest extends GamesHttpTestBase {
         send(b, get("/api/v1/idle")).andExpect(jsonPath("$.data.oranges").value(0));
         send(a, get("/api/v1/idle")).andExpect(jsonPath("$.data.oranges").value(50));
     }
+
+    @Test
+    @DisplayName("마일스톤: 도로롱을 키우다 레벨 10 에 닿으면 생산이 두 배가 되고 응답에 반영된다")
+    void milestoneDoublesOutput() throws Exception {
+        TestUser user = newUser();
+        send(user, get("/api/v1/idle")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.producers[0].milestones").value(0))
+                .andExpect(jsonPath("$.data.producers[0].nextMilestone").value(10))
+                .andExpect(jsonPath("$.data.producers[0].outputMultiplier").value(1))
+                .andExpect(jsonPath("$.data.nextCollectionTarget").value(4))
+                .andExpect(jsonPath("$.data.collectionBonusPercent").value(100));
+        // 귤을 모은다: 탭 100번을 시간을 두고 여러 번(초당 15번 인정) — 아기 도로롱 10레벨까지 약 190 필요
+        for (int i = 0; i < 4; i++) {
+            tap(user, 100);
+            clock.advance(Duration.ofSeconds(8));
+        }
+        buy(user, 0, 10).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.producers[0].level").value(10))
+                .andExpect(jsonPath("$.data.producers[0].milestones").value(1))
+                .andExpect(jsonPath("$.data.producers[0].outputMultiplier").value(2))
+                .andExpect(jsonPath("$.data.producers[0].nextMilestone").value(25))
+                // 10 × 1 × 2 = 20, 도감 1종 +4% → 20
+                .andExpect(jsonPath("$.data.ratePerSecond").value(20));
+    }
 }

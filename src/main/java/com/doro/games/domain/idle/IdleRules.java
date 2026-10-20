@@ -1,5 +1,6 @@
 package com.doro.games.domain.idle;
 
+import java.math.BigInteger;
 import java.util.List;
 import java.util.function.IntToLongFunction;
 
@@ -17,6 +18,14 @@ public final class IdleRules {
     public static final int MAX_LEVEL = 500;
     /** 도감에 올린 도로롱 종류 하나마다 생산량이 늘어나는 비율(%) */
     public static final int COLLECTION_BONUS_PERCENT = 4;
+    /**
+     * 마일스톤: 한 종류의 레벨이 이 값에 닿을 때마다 그 도로롱의 생산이 두 배가 된다(숫자가 확 튀는 순간).
+     * 마지막(400) 뒤에는 없다. 최대 레벨(500)에서 ×128.
+     */
+    public static final int[] MILESTONE_LEVELS = {10, 25, 50, 100, 200, 300, 400};
+    /** 도감 완성도 보너스: 종류 수가 이 값에 닿으면 전체 생산에 곱해지는 배율(%). 누적이 아니라 가장 높은 것 하나만 적용한다. */
+    public static final int[] COLLECTION_TARGETS = {4, 8, 12};
+    public static final int[] COLLECTION_TARGET_PERCENT = {125, 150, 200};
     /** 값이 이보다 커지면 더 키우지 않는다(비용이 넘치지 않게). 귤 한도보다 훨씬 커서 사실상 살 수 없다. */
     private static final long COST_SATURATION = 4_000_000_000_000_000_000L;
 
@@ -93,6 +102,43 @@ public final class IdleRules {
         return 1 + tapLevel + ratePerSecond / 100;
     }
 
+    /** 이 레벨까지 닿은 마일스톤 수 */
+    public static int milestonesReached(int level) {
+        int reached = 0;
+        for (int m : MILESTONE_LEVELS) {
+            if (level >= m) {
+                reached++;
+            }
+        }
+        return reached;
+    }
+
+    /** 다음 마일스톤 레벨(모두 닿았으면 0) */
+    public static int nextMilestone(int level) {
+        for (int m : MILESTONE_LEVELS) {
+            if (level < m) {
+                return m;
+            }
+        }
+        return 0;
+    }
+
+    /** 이 레벨에서 그 도로롱의 생산 배수(마일스톤마다 ×2) */
+    public static long outputMultiplier(int level) {
+        return 1L << milestonesReached(level);
+    }
+
+    /** 도감 완성도 보너스 배율(%): 100(없음), 125, 150, 200 */
+    public static int collectionBonusPercent(int collected) {
+        int percent = 100;
+        for (int i = 0; i < COLLECTION_TARGETS.length; i++) {
+            if (collected >= COLLECTION_TARGETS[i]) {
+                percent = COLLECTION_TARGET_PERCENT[i];
+            }
+        }
+        return percent;
+    }
+
     /** 레벨이 1 이상인 도로롱 종류 수(도감) */
     public static int collected(int[] levels) {
         int count = 0;
@@ -109,13 +155,21 @@ public final class IdleRules {
         return 100 + COLLECTION_BONUS_PERCENT * collected(levels);
     }
 
-    /** 초당 귤 생산량(정수, 내림) */
+    /** 도로롱 종류 하나의 기본 생산(마일스톤 반영, 도감 배율 전) */
+    public static long producerOutput(int index, int level) {
+        return (long) level * PRODUCERS.get(index).baseRate() * outputMultiplier(level);
+    }
+
+    /**
+     * 초당 귤 생산량(정수, 내림): 종류별 생산(마일스톤 반영)의 합 × 도감 종류 보너스(4%/종) × 도감 완성도 보너스.
+     * 최대 레벨 500 이 모두 ×128 일 때도 합이 2×10^13 안팎이라 곱셈 중간값이 long 안에 든다(테스트로 확인).
+     */
     public static long ratePerSecond(int[] levels) {
         long sum = 0;
         for (int i = 0; i < PRODUCER_COUNT; i++) {
-            sum += (long) levels[i] * PRODUCERS.get(i).baseRate();
+            sum += producerOutput(i, levels[i]);
         }
-        return sum * multiplierPercent(levels) / 100;
+        return sum * multiplierPercent(levels) * collectionBonusPercent(collected(levels)) / 10_000;
     }
 
     /** 이 정산에서 얻는 귤과, 소비한 시간(ms). 남은 시간은 다음 정산으로 넘어간다. */
@@ -130,13 +184,20 @@ public final class IdleRules {
             return new Gain(0, Math.max(0, elapsedMs));
         }
         long usable = Math.min(elapsedMs, OFFLINE_CAP_MS);
-        // rate(≤ ~1e12) × ms(≤ 2.9e7) 는 long 범위 안이다(레벨 상한과 8시간 상한으로 보장, 테스트로 확인)
-        long oranges = rate * usable / 1000;
-        if (oranges <= 0) {
-            return new Gain(0, elapsedMs > OFFLINE_CAP_MS ? elapsedMs : 0);
+        boolean forfeits = elapsedMs > OFFLINE_CAP_MS;
+        // rate × ms 는 마일스톤이 쌓이면 long 을 넘을 수 있어서 BigInteger 로 계산한다(정산마다 한 번이라 비용이 거의 없다)
+        BigInteger raw = BigInteger.valueOf(rate).multiply(BigInteger.valueOf(usable)).divide(BigInteger.valueOf(1000));
+        BigInteger cap = BigInteger.valueOf(ORANGE_CAP);
+        if (raw.signum() == 0) {
+            return new Gain(0, forfeits ? elapsedMs : 0);
         }
-        long consumed = oranges * 1000 / rate;
-        return new Gain(oranges, elapsedMs > OFFLINE_CAP_MS ? elapsedMs : Math.min(consumed, usable));
+        boolean capped = raw.compareTo(cap) > 0;
+        long oranges = capped ? ORANGE_CAP : raw.longValueExact();
+        // 한도에 걸렸거나 8시간을 넘긴 시간은 통째로 소비한다. 그 밖에는 얻은 귤만큼의 시간만 소비하고 나머지는 다음으로 넘긴다.
+        long consumed = (capped || forfeits)
+                ? elapsedMs
+                : Math.min(usable, BigInteger.valueOf(oranges).multiply(BigInteger.valueOf(1000)).divide(BigInteger.valueOf(rate)).longValueExact());
+        return new Gain(oranges, consumed);
     }
 
     /** 귤 한도를 넘지 않게 더한다. 실제로 더해진 양을 돌려주려면 호출한 쪽이 차이를 계산한다. */

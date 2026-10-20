@@ -5,6 +5,8 @@ import type { IdleView } from '../../api/types';
 import { buildLoginUrl, useAuthStore } from '../../store/authStore';
 import { ASSET_DIR, loadSprites, variantOf, type Sprites } from '../orange/assets';
 import { formatCount } from '../orange/format';
+import FarmField from './FarmField';
+import { celebrations, milestoneProgress, nextGoals } from './goals';
 import { canAfford, maxBuyHint, projectOranges } from './live';
 
 const ASSET_BASE = `${import.meta.env.BASE_URL}${ASSET_DIR}/`;
@@ -49,6 +51,7 @@ export default function FarmGame() {
   const [error, setError] = useState<string | null>(null);
   const [sprites, setSprites] = useState<Sprites>({});
   const [floaters, setFloaters] = useState<Floater[]>([]);
+  const [hop, setHop] = useState(0);
 
   const viewRef = useRef<IdleView | null>(null);
   const receivedAtRef = useRef(0);
@@ -58,6 +61,11 @@ export default function FarmGame() {
   const floaterIdRef = useRef(0);
 
   const accept = useCallback((next: IdleView) => {
+    // 새로 닿은 마일스톤·도감 목표는 축하한다(처음 불러온 것은 비교 대상이 없어 알리지 않는다)
+    const lines = celebrations(viewRef.current, next);
+    if (lines.length > 0) {
+      setNotice({ tone: 'ok', text: lines.join(' · ') });
+    }
     viewRef.current = next;
     receivedAtRef.current = performance.now();
     setView(next);
@@ -156,6 +164,7 @@ export default function FarmGame() {
       return;
     }
     pendingRef.current += 1;
+    setHop((n) => n + 1);
     const rect = event.currentTarget.getBoundingClientRect();
     const id = (floaterIdRef.current += 1);
     setFloaters((list) => [...list.slice(-8), { id, x: event.clientX - rect.left, y: event.clientY - rect.top, text: `+${formatCount(v.tapPower)}` }]);
@@ -201,6 +210,10 @@ export default function FarmGame() {
   const leadImage = variantOf(sprites, 'tile', lead);
   const hasImages = Boolean(sprites.variants?.tile);
   const firstHidden = view.producers.findIndex((p) => !p.revealed);
+  const goals = nextGoals(view);
+  const levels = view.producers.map((p) => p.level);
+  const tileImages = view.producers.map((p) => variantOf(sprites, 'tile', p.index));
+  const background = sprites.variants?.bg?.[1];
 
   return (
     <div className="mx-auto w-full max-w-md select-none">
@@ -211,8 +224,20 @@ export default function FarmGame() {
         </p>
         <p className="mt-1 text-sm text-slate-300">초당 +{formatCount(view.ratePerSecond)}</p>
         <p className="text-xs text-slate-500">
-          도감 {view.collected}/{view.collectionTotal} · 생산 ×{(view.multiplierPercent / 100).toFixed(2)}
+          도감 {view.collected}/{view.collectionTotal} · 생산 ×{((view.multiplierPercent * view.collectionBonusPercent) / 10000).toFixed(2)}
         </p>
+      </div>
+
+      {goals.length > 0 && (
+        <ul aria-label="다음 목표" className="mt-3 space-y-1 rounded-xl border border-amber-300/30 bg-amber-300/5 px-3 py-2 text-xs text-amber-100">
+          {goals.map((g) => (
+            <li key={g.text}>🎯 {g.text}</li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-3">
+        <FarmField levels={levels} images={tileImages} background={background} hop={hop} />
       </div>
 
       <div className="relative mt-3 flex justify-center">
@@ -288,14 +313,58 @@ export default function FarmGame() {
                   {p.name} <span className="font-mono text-slate-400">Lv.{p.level}</span>
                 </span>
                 <span className="block text-xs text-slate-400">
-                  1마리 +{formatCount(Math.floor((p.baseRate * view.multiplierPercent) / 100))}/초 · 지금 +{formatCount(p.ratePerSecond)}/초
+                  지금 +{formatCount(p.ratePerSecond)}/초
+                  {p.outputMultiplier > 1 && <span className="ml-1 rounded bg-amber-300/20 px-1 font-bold text-amber-200">×{p.outputMultiplier}</span>}
                 </span>
+                {p.level > 0 && p.nextMilestone > 0 && (
+                  <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-slate-800" title={`Lv.${p.nextMilestone} 에서 생산 ×2`}>
+                    <span className="block h-full rounded-full bg-amber-300" style={{ width: `${Math.round(milestoneProgress(p.level, p.milestones, p.nextMilestone) * 100)}%` }} />
+                  </span>
+                )}
               </span>
               <BuyButton cost={p.nextCost} amount={amount} shown={shown} onBuy={() => void purchase(() => buyProducer(p.index, amount))} />
             </li>
           );
         })}
       </ul>
+
+      <details className="mt-4 rounded-xl border border-slate-700 bg-slate-900 p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-200">
+          도감 {view.collected}/{view.collectionTotal} · 종류 ×{(view.multiplierPercent / 100).toFixed(2)} · 완성도 ×{(view.collectionBonusPercent / 100).toFixed(2)}
+        </summary>
+        <ul className="mt-3 grid grid-cols-4 gap-2">
+          {view.producers.map((p) => {
+            const got = p.level > 0;
+            const image = tileImages[p.index];
+            return (
+              <li key={p.index} className="flex flex-col items-center rounded-lg bg-slate-800/60 p-1.5 text-center">
+                <span className="flex h-12 w-12 items-center justify-center">
+                  {hasImages && image ? (
+                    <img src={image.src} alt="" draggable={false} className="h-11 w-11 object-contain" style={got ? undefined : { filter: 'grayscale(1) brightness(0.2)' }} />
+                  ) : (
+                    <span className="text-2xl">{got ? '🍊' : '❔'}</span>
+                  )}
+                </span>
+                <span className={`mt-0.5 w-full truncate text-[10px] ${got ? 'text-slate-200' : 'text-slate-600'}`}>{got ? p.name.replace(' 도로롱', '') : '???'}</span>
+                {got && <span className="font-mono text-[10px] text-slate-400">Lv.{p.level}</span>}
+              </li>
+            );
+          })}
+        </ul>
+        <ul className="mt-3 space-y-1 text-xs text-slate-400">
+          <li>도로롱 한 종류를 모을 때마다 생산 +4%</li>
+          {[
+            [4, '1.25'],
+            [8, '1.50'],
+            [12, '2.00'],
+          ].map(([n, x]) => (
+            <li key={n} className={view.collected >= Number(n) ? 'text-emerald-300' : undefined}>
+              {view.collected >= Number(n) ? '✓' : '○'} {n}종 달성: 전체 생산 ×{x}
+            </li>
+          ))}
+          <li>레벨 10·25·50·100·200·300·400이 되면 그 도로롱의 생산이 두 배</li>
+        </ul>
+      </details>
     </div>
   );
 }
