@@ -13,7 +13,7 @@ export default function Hero() {
       <div className="max-w-md pb-40 sm:pb-28">
         <p className="text-sm font-semibold text-pink-300">{user ? `${user.nickname} 님, 어서 와요!` : '어서 와요!'}</p>
         <h1 className="mt-1 text-3xl font-extrabold leading-tight text-slate-50 sm:text-4xl">도로 게임 천국</h1>
-        <p className="mt-3 text-slate-300">잠깐 쉬어 가는 미니게임 모음. 한 판만 하려다 열 판이 되는 곳이에요.</p>
+        <p className="mt-3 text-slate-300">잠깐 쉬어 가는 미니게임과, 오래 두고 키우는 게임이 있는 곳이에요. 한 판만 하려다 열 판이 되어도 몰라요.</p>
         {hasDefaultNickname(user) && (
           <button
             type="button"

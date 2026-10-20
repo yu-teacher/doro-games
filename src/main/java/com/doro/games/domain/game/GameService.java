@@ -45,7 +45,7 @@ public class GameService {
     public List<GameHighlight> highlights(DoroUser doroUser) {
         UUID userId = doroUser.isAuthenticated() ? doroUser.userId() : null;
         return jdbc.sql("""
-                SELECT g.slug, g.title, g.description,
+                SELECT g.slug, g.title, g.description, g.category,
                        t.best_score AS top_score, t.nickname AS top_nickname,
                        m.best_score AS my_best,
                        CASE WHEN m.best_score IS NULL THEN NULL ELSE (
@@ -63,7 +63,7 @@ public class GameService {
                 ORDER BY g.sort_order, g.title
                 """)
                 .param("userId", userId == null ? null : userId.toString())
-                .query((rs, i) -> new GameHighlight(rs.getString("slug"), rs.getString("title"), rs.getString("description"),
+                .query((rs, i) -> new GameHighlight(rs.getString("slug"), rs.getString("title"), rs.getString("description"), rs.getString("category"),
                         nullableLong(rs, "top_score"), rs.getString("top_nickname"),
                         nullableLong(rs, "my_best"), nullableLong(rs, "my_rank")))
                 .list();

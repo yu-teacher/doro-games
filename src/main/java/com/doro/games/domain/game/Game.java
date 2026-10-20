@@ -30,6 +30,10 @@ public class Game {
     @Column(nullable = false, length = 500)
     private String description;
 
+    /** minigame(한 판씩 점수를 겨룸) 또는 longplay(진행 상황이 이어지는 게임). 로비가 구역을 나누는 기준 */
+    @Column(nullable = false, length = 20)
+    private String category;
+
     @Column(nullable = false)
     private boolean enabled;
 
