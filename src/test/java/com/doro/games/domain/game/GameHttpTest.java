@@ -17,6 +17,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** 게임 목록·판 시작·점수 제출·랭킹. 점수는 서버가 발급한 판과 경과 시간으로만 인정한다. */
 class GameHttpTest extends GamesHttpTestBase {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.jdbc.core.simple.JdbcClient jdbc;
+
     private static final String RUNNER = "runner";
 
     private ResultActions submit(TestUser user, String runId, long score) throws Exception {
@@ -32,12 +35,9 @@ class GameHttpTest extends GamesHttpTestBase {
                 .andExpect(jsonPath("$.data[?(@.slug=='runner')]").exists());
         mockMvc.perform(get("/api/v1/games/runner")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.category").value("minigame"));
-        // 진행 상황이 이어지는 방치형은 로비에서 다른 구역에 나온다
-        mockMvc.perform(get("/api/v1/games/orange-farm")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.category").value("longplay"));
-        mockMvc.perform(get("/api/v1/games/highlights")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[?(@.slug=='orange-farm')].category").value("longplay"))
-                .andExpect(jsonPath("$.data[?(@.slug=='runner')].category").value("minigame"));
+        // 닫힌 게임(귤농장)은 목록과 조회에서 빠진다
+        mockMvc.perform(get("/api/v1/games/orange-farm")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/games")).andExpect(jsonPath("$.data[?(@.slug=='orange-farm')]").isEmpty());
         mockMvc.perform(get("/api/v1/games/runner/leaderboard")).andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/games/nope")).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("GAME-404-01"));
@@ -179,5 +179,22 @@ class GameHttpTest extends GamesHttpTestBase {
         String tooFast = startRun(user, "orange-blitz");
         send(user, post("/api/v1/games/{s}/runs/{r}/score", "orange-blitz", tooFast).contentType(MediaType.APPLICATION_JSON).content("{\"score\":300000}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("SCORE-400-01"));
+    }
+
+    @Test
+    @DisplayName("게임 종류(category): 한 판씩 겨루는 게임은 minigame, 진행이 이어지는 게임은 longplay")
+    void categories() throws Exception {
+        // 귤농장은 닫혀 있어서 시험하는 동안만 연다
+        jdbc.sql("UPDATE games SET enabled = TRUE WHERE slug = 'orange-farm'").update();
+        try {
+            mockMvc.perform(get("/api/v1/games/runner")).andExpect(jsonPath("$.data.category").value("minigame"));
+            mockMvc.perform(get("/api/v1/games/orange-farm")).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.category").value("longplay"));
+            mockMvc.perform(get("/api/v1/games/highlights"))
+                    .andExpect(jsonPath("$.data[?(@.slug=='orange-farm')].category").value("longplay"))
+                    .andExpect(jsonPath("$.data[?(@.slug=='runner')].category").value("minigame"));
+        } finally {
+            jdbc.sql("UPDATE games SET enabled = FALSE WHERE slug = 'orange-farm'").update();
+        }
     }
 }
