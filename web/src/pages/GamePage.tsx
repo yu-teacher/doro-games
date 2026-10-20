@@ -4,7 +4,7 @@ import { getGame, getLeaderboard, getMyRecord, startRun, submitScore } from '../
 import { ApiError } from '../api/client';
 import type { Game, Leaderboard, MyRecord, Run } from '../api/types';
 import { LEADERBOARD_SIZE } from '../config';
-import { GAME_COMPONENTS } from '../games/registry';
+import { GAME_COMPONENTS, RUNLESS_GAMES } from '../games/registry';
 import { buildLoginUrl, useAuthStore } from '../store/authStore';
 
 type GameLoad = { status: 'loading' } | { status: 'missing' } | { status: 'ready'; game: Game };
@@ -113,6 +113,8 @@ export default function GamePage() {
     );
   }
 
+  const runless = RUNLESS_GAMES.has(load.game.slug);
+
   return (
     <main className="mx-auto max-w-4xl px-4 pb-16 sm:px-6">
       <Link to="/" className="inline-block py-2 text-sm text-slate-400 hover:text-sky-300">
@@ -124,13 +126,13 @@ export default function GamePage() {
         <p className="mt-1 text-slate-400">{load.game.description}</p>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_16rem] [@media(max-height:500px)]:mt-1">
+      <div className={`mt-5 grid grid-cols-1 gap-6 [@media(max-height:500px)]:mt-1 ${runless ? '' : 'lg:grid-cols-[minmax(0,1fr)_16rem]'}`}>
         <section>
           <GameComponent best={record?.best ?? null} onStart={handleStart} onGameOver={handleGameOver} />
           <div aria-live="polite" className="mt-3 min-h-6 text-sm">
             {notice && <p className={notice.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'}>{notice.text}</p>}
           </div>
-          {!isAuthenticated && (
+          {!runless && !isAuthenticated && (
             <p className="mt-2 text-sm text-slate-400">
               <a href={buildLoginUrl(`/g/${slug}`)} className="font-semibold text-sky-300 underline">
                 로그인
@@ -138,13 +140,14 @@ export default function GamePage() {
               하면 기록이 랭킹에 올라가요.
             </p>
           )}
-          {record && (
+          {!runless && record && (
             <p className="mt-2 text-sm text-slate-300">
               내 기록: <strong>{record.best}점</strong> · {record.rank}위 · {record.plays}판
             </p>
           )}
         </section>
 
+        {!runless && (
         <aside aria-label="랭킹">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">랭킹</h2>
           {leaderboard && leaderboard.entries.length === 0 && <p className="mt-2 text-sm text-slate-500">아직 기록이 없어요. 첫 기록의 주인공이 되어 보세요!</p>}
@@ -161,6 +164,7 @@ export default function GamePage() {
             ))}
           </ol>
         </aside>
+        )}
       </div>
     </main>
   );

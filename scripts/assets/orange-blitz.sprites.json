@@ -325,6 +325,11 @@
         "src": "costumes/costumes-023-royal-robe.png",
         "cutout": "rembg",
         "height": 192
+      },
+      {
+        "src": "costumes/costumes-030.png",
+        "cutout": "adaptive",
+        "height": 192
       }
     ]
   }
