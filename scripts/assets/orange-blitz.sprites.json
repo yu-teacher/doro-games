@@ -269,6 +269,63 @@
         "height": 128,
         "frames": 8
       }
+    ],
+    "tile": [
+      {
+        "src": "characters/characters-007-standing-clean.webp",
+        "cutout": "adaptive",
+        "height": 192
+      },
+      {
+        "src": "costumes/costumes-026-chicken-suit.png",
+        "cutout": "adaptive",
+        "height": 192
+      },
+      {
+        "src": "costumes/costumes-033-bunny-onesie.png",
+        "cutout": "adaptive",
+        "height": 192
+      },
+      {
+        "src": "costumes/costumes-025.png",
+        "cutout": "adaptive",
+        "height": 192
+      },
+      {
+        "src": "costumes/costumes-032-dino-onesie.png",
+        "cutout": "adaptive",
+        "height": 192
+      },
+      {
+        "src": "costumes/costumes-022-shark-suit.jpg",
+        "cutout": "adaptive",
+        "height": 192
+      },
+      {
+        "src": "costumes/costumes-013-watermelon-helmet.jpg",
+        "cutout": "adaptive",
+        "height": 192
+      },
+      {
+        "src": "costumes/costumes-018-cowboy-gun.png",
+        "cutout": "rembg",
+        "height": 192
+      },
+      {
+        "src": "costumes/costumes-029-maid-broom.gif",
+        "cutout": "adaptive",
+        "height": 192
+      },
+      {
+        "src": "characters/characters-024-buff-boss.jpg",
+        "cutout": "rembg",
+        "height": 192
+      },
+      {
+        "src": "costumes/costumes-023-royal-robe.png",
+        "cutout": "rembg",
+        "height": 192
+      }
     ]
   }
 }

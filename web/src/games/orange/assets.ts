@@ -15,9 +15,9 @@ export type SpriteKey = 'hero' | 'swarm' | 'slime' | 'runner' | 'sniper' | 'boss
 export const SPRITE_KEYS: readonly SpriteKey[] = ['hero', 'swarm', 'slime', 'runner', 'sniper', 'boss', 'orange', 'chicken', 'cash', 'star', 'pierce', 'bomb', 'bg'];
 
 /** 같은 역할의 그림 여러 장을 가진 키(배경 띠, 졸개·덩치 의상, 보스 모습) */
-export type VariantKey = 'bg' | 'grunt' | 'brute' | 'boss' | 'hero';
+export type VariantKey = 'bg' | 'grunt' | 'brute' | 'boss' | 'hero' | 'tile';
 
-export const VARIANT_KEYS: readonly VariantKey[] = ['bg', 'grunt', 'brute', 'boss', 'hero'];
+export const VARIANT_KEYS: readonly VariantKey[] = ['bg', 'grunt', 'brute', 'boss', 'hero', 'tile'];
 
 interface SpriteMeta {
   file: string;
@@ -56,7 +56,7 @@ export function variantOf(sprites: Sprites, key: VariantKey, index: number): HTM
   if (list && list.length > 0) {
     return list[((index % list.length) + list.length) % list.length];
   }
-  return key === 'grunt' ? sprites.swarm : key === 'brute' ? sprites.slime : sprites[key];
+  return key === 'grunt' ? sprites.swarm : key === 'brute' ? sprites.slime : key === 'tile' ? undefined : sprites[key];
 }
 
 function parseMeta(entry: unknown): SpriteMeta | null {
