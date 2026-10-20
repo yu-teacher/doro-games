@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import mascotUrl from '../runner/assets/player.png';
 import type { GameComponentProps } from '../registry';
-import { SIZE, createState, move, type Direction, type Game2048State } from './engine';
+import { ASSET_DIR, frameCount, loadSprites, variantOf, type Sprites } from '../orange/assets';
+import { SIZE, createState, maxTile, move, type Direction, type Game2048State } from './engine';
+import { TILE_NAMES, tileLevel, tileValue } from './theme';
 
 const BOARD = 400;
 const PADDING = 12;
@@ -13,6 +15,8 @@ const SLIDE_MS = 110;
 /** 이 거리(px)보다 짧게 끌면 스와이프로 보지 않는다 */
 const SWIPE_MIN_PX = 24;
 const SEED_BOUND = 0x100000000;
+/** 도로롱 그림이 있는 곳(게임 그림 묶음) */
+const ASSET_BASE = `${import.meta.env.BASE_URL}${ASSET_DIR}/`;
 /** 이 값 이상의 타일에는 마스코트가 놀러 온다 */
 const MASCOT_FROM = 128;
 
@@ -73,13 +77,38 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 const mascot = new Image();
 mascot.src = mascotUrl;
 
-function drawTile(ctx: CanvasRenderingContext2D, value: number, x: number, y: number, scale: number): void {
+function drawTile(ctx: CanvasRenderingContext2D, sprites: Sprites, value: number, x: number, y: number, scale: number): void {
   const size = CELL * scale;
   const left = x + (CELL - size) / 2;
   const top = y + (CELL - size) / 2;
   ctx.fillStyle = TILE_COLORS[value] ?? BIG_TILE_COLOR;
   roundRect(ctx, left, top, size, size, RADIUS);
   ctx.fill();
+
+  const image = variantOf(sprites, 'tile', tileLevel(value));
+  if (sprites.variants?.tile && image) {
+    // 도로롱 그림을 크게, 숫자는 모서리 배지로 작게
+    const frames = frameCount(image);
+    const frameW = image.naturalWidth / frames;
+    const box = size * 0.86;
+    const fit = Math.min(box / frameW, box / image.naturalHeight);
+    const w = frameW * fit;
+    const h = image.naturalHeight * fit;
+    ctx.drawImage(image, 0, 0, frameW, image.naturalHeight, left + (size - w) / 2, top + (size - h) / 2 - size * 0.02, w, h);
+    const label = String(value);
+    const fontSize = (label.length <= 3 ? 17 : 14) * scale;
+    ctx.font = `800 ${fontSize}px system-ui, sans-serif`;
+    const badgeW = ctx.measureText(label).width + 12 * scale;
+    const badgeH = fontSize + 6 * scale;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    roundRect(ctx, left + size - badgeW - 4 * scale, top + size - badgeH - 4 * scale, badgeW, badgeH, badgeH / 2);
+    ctx.fill();
+    ctx.fillStyle = COLORS.light;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, left + size - badgeW / 2 - 4 * scale, top + size - badgeH / 2 - 4 * scale + 1);
+    return;
+  }
 
   const dark = value <= 4;
   ctx.fillStyle = dark ? COLORS.dark : COLORS.light;
@@ -97,7 +126,7 @@ function drawTile(ctx: CanvasRenderingContext2D, value: number, x: number, y: nu
   }
 }
 
-function draw(ctx: CanvasRenderingContext2D, state: Game2048State, startedAt: number, now: number): void {
+function draw(ctx: CanvasRenderingContext2D, sprites: Sprites, state: Game2048State, startedAt: number, now: number): void {
   ctx.clearRect(0, 0, BOARD, BOARD);
   ctx.fillStyle = COLORS.board;
   roundRect(ctx, 0, 0, BOARD, BOARD, 16);
@@ -118,7 +147,7 @@ function draw(ctx: CanvasRenderingContext2D, state: Game2048State, startedAt: nu
     for (const ghost of state.ghosts) {
       const from = cellOrigin(ghost.fromRow, ghost.fromCol);
       const to = cellOrigin(ghost.row, ghost.col);
-      drawTile(ctx, ghost.value, lerp(from.x, to.x), lerp(from.y, to.y), 1);
+      drawTile(ctx, sprites, ghost.value, lerp(from.x, to.x), lerp(from.y, to.y), 1);
     }
   }
   for (const tile of state.tiles) {
@@ -132,7 +161,7 @@ function draw(ctx: CanvasRenderingContext2D, state: Game2048State, startedAt: nu
       scale = 1 + 0.14 * Math.sin(Math.PI * t);
     }
     if (scale > 0) {
-      drawTile(ctx, tile.value, lerp(from.x, to.x), lerp(from.y, to.y), scale);
+      drawTile(ctx, sprites, tile.value, lerp(from.x, to.x), lerp(from.y, to.y), scale);
     }
   }
 
@@ -160,6 +189,10 @@ export default function Game2048({ best, onStart, onGameOver }: GameComponentPro
   const onGameOverRef = useRef(onGameOver);
   const [score, setScore] = useState(0);
   const [over, setOver] = useState(false);
+  const spritesRef = useRef<Sprites>({});
+  const [tileImages, setTileImages] = useState<HTMLImageElement[]>([]);
+  /** 이번 판에서 만든 가장 큰 타일 */
+  const [reached, setReached] = useState(2);
 
   useEffect(() => {
     onStartRef.current = onStart;
@@ -173,6 +206,7 @@ export default function Game2048({ best, onStart, onGameOver }: GameComponentPro
     }
     movedAtRef.current = performance.now();
     setScore(state.score);
+    setReached(Math.max(2, maxTile(state)));
     if (state.moves === 1) {
       onStartRef.current();
     }
@@ -191,7 +225,17 @@ export default function Game2048({ best, onStart, onGameOver }: GameComponentPro
     stateRef.current = createState(newSeed());
     movedAtRef.current = 0;
     setScore(0);
+    setReached(2);
     setOver(false);
+  }, []);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    void loadSprites(ASSET_BASE, abort.signal).then((loaded) => {
+      spritesRef.current = loaded;
+      setTileImages(loaded.variants?.tile ?? []);
+    });
+    return () => abort.abort();
   }, []);
 
   useEffect(() => {
@@ -207,7 +251,7 @@ export default function Game2048({ best, onStart, onGameOver }: GameComponentPro
 
     let frameId = 0;
     const frame = (now: number) => {
-      draw(ctx, stateRef.current, movedAtRef.current, now);
+      draw(ctx, spritesRef.current, stateRef.current, movedAtRef.current, now);
       frameId = requestAnimationFrame(frame);
     };
     frameId = requestAnimationFrame(frame);
@@ -284,6 +328,38 @@ export default function Game2048({ best, onStart, onGameOver }: GameComponentPro
         className="block w-full touch-none select-none rounded-2xl"
         style={{ aspectRatio: '1 / 1' }}
       />
+      {tileImages.length > 0 && (
+        <div className="mt-3" aria-label="도로롱 도감">
+          <p className="mb-1 text-center text-xs text-slate-400">
+            {reached >= tileValue(TILE_NAMES.length - 1) ? `폐하 도로롱 달성! 계속 도전해요` : `다음 진화: ${tileValue(tileLevel(reached) + 1)} ${TILE_NAMES[tileLevel(reached) + 1]}`}
+          </p>
+          <div className="flex flex-wrap justify-center gap-1.5">
+            {TILE_NAMES.map((name, level) => {
+              const image = tileImages[level];
+              if (!image) {
+                return null;
+              }
+              const frames = frameCount(image);
+              const got = reached >= tileValue(level);
+              return (
+                <div key={name} title={got ? name : '???'} className="flex w-12 flex-col items-center">
+                  <div
+                    className={`h-11 w-11 rounded-lg border bg-slate-900 ${got ? 'border-pink-300/70' : 'border-slate-700'}`}
+                    style={{
+                      backgroundImage: `url(${image.src})`,
+                      backgroundSize: `${frames * 100}% 80%`,
+                      backgroundPosition: 'left center',
+                      backgroundRepeat: 'no-repeat',
+                      filter: got ? 'none' : 'grayscale(1) brightness(0.25)',
+                    }}
+                  />
+                  <span className={`mt-0.5 font-mono text-[10px] ${got ? 'text-slate-200' : 'text-slate-600'}`}>{tileValue(level)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <p className="mt-3 text-center text-sm text-slate-500">방향키 · WASD · 화면을 밀어서 움직여요</p>
     </div>
   );
