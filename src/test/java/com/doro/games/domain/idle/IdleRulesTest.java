@@ -49,7 +49,8 @@ class IdleRulesTest {
     @DisplayName("생산량은 도감에 오른 종류마다 4% 씩 늘어난다")
     void collectionBonus() {
         assertThat(IdleRules.ratePerSecond(levels())).isZero();
-        assertThat(IdleRules.ratePerSecond(levels(10))).isEqualTo(10 * 1 * 104 / 100);
+        // 레벨 9 는 마일스톤 전: 9 × 1 × 104%
+        assertThat(IdleRules.ratePerSecond(levels(9))).isEqualTo(9 * 104 / 100);
         assertThat(IdleRules.collected(levels(1, 0, 3))).isEqualTo(2);
         assertThat(IdleRules.multiplierPercent(levels(1, 1, 1))).isEqualTo(112);
     }
@@ -63,7 +64,9 @@ class IdleRulesTest {
         assertThat(rate).isPositive();
         var gain = IdleRules.settle(rate, IdleRules.OFFLINE_CAP_MS);
         assertThat(gain.oranges()).isPositive();
-        assertThat(rate * IdleRules.OFFLINE_CAP_MS / 1000).isEqualTo(gain.oranges());
+        // 마일스톤이 모두 쌓인 최대 상태에서는 8시간치가 귤 한도를 넘으므로 한도에서 멈춘다(넘치지 않는다)
+        assertThat(gain.oranges()).isEqualTo(IdleRules.ORANGE_CAP);
+        assertThat(gain.consumedMs()).isEqualTo(IdleRules.OFFLINE_CAP_MS);
         // 한도 안의 정수이므로 더해도 한도를 넘지 않는다
         assertThat(IdleRules.addCapped(IdleRules.ORANGE_CAP - 1, gain.oranges())).isEqualTo(IdleRules.ORANGE_CAP);
         assertThat(IdleRules.addCapped(0, Long.MAX_VALUE)).isEqualTo(IdleRules.ORANGE_CAP);
@@ -130,5 +133,38 @@ class IdleRulesTest {
         assertThat(IdleRules.tapPower(0, 0)).isEqualTo(1);
         assertThat(IdleRules.tapPower(4, 0)).isEqualTo(5);
         assertThat(IdleRules.tapPower(0, 1_000)).isEqualTo(11);
+    }
+
+    @Test
+    @DisplayName("마일스톤: 레벨 10·25·50… 에 닿을 때마다 그 도로롱의 생산이 두 배가 된다")
+    void milestones() {
+        assertThat(IdleRules.milestonesReached(9)).isZero();
+        assertThat(IdleRules.milestonesReached(10)).isEqualTo(1);
+        assertThat(IdleRules.milestonesReached(49)).isEqualTo(2);
+        assertThat(IdleRules.milestonesReached(500)).isEqualTo(IdleRules.MILESTONE_LEVELS.length);
+        assertThat(IdleRules.outputMultiplier(9)).isEqualTo(1);
+        assertThat(IdleRules.outputMultiplier(10)).isEqualTo(2);
+        assertThat(IdleRules.outputMultiplier(25)).isEqualTo(4);
+        assertThat(IdleRules.outputMultiplier(500)).isEqualTo(128);
+        assertThat(IdleRules.nextMilestone(0)).isEqualTo(10);
+        assertThat(IdleRules.nextMilestone(10)).isEqualTo(25);
+        assertThat(IdleRules.nextMilestone(400)).isZero();
+        // 레벨 10 아기 도로롱: 10 × 1 × 2 = 20, 도감 1종 +4% → 20.8 → 20
+        assertThat(IdleRules.ratePerSecond(levels(10))).isEqualTo(20);
+        // 마일스톤 직전과 직후의 생산은 두 배 가까이 뛴다
+        assertThat(IdleRules.producerOutput(0, 10)).isEqualTo(2 * IdleRules.producerOutput(0, 9) + 2);
+    }
+
+    @Test
+    @DisplayName("도감 완성도: 4·8·12종에서 전체 생산 배율이 125·150·200% 로 오른다(가장 높은 것 하나만)")
+    void collectionTargets() {
+        assertThat(IdleRules.collectionBonusPercent(0)).isEqualTo(100);
+        assertThat(IdleRules.collectionBonusPercent(3)).isEqualTo(100);
+        assertThat(IdleRules.collectionBonusPercent(4)).isEqualTo(125);
+        assertThat(IdleRules.collectionBonusPercent(7)).isEqualTo(125);
+        assertThat(IdleRules.collectionBonusPercent(8)).isEqualTo(150);
+        assertThat(IdleRules.collectionBonusPercent(12)).isEqualTo(200);
+        // 4종(레벨 1): 합 = 1+5+30+170 = 206, 종류 보너스 116%, 완성도 125% → 206 × 116 × 125 / 10000 = 298.7 → 298
+        assertThat(IdleRules.ratePerSecond(levels(1, 1, 1, 1))).isEqualTo(298);
     }
 }

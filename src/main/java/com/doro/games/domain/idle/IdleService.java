@@ -187,16 +187,28 @@ public class IdleService {
     private IdleView toView(Save s, Settlement settlement) {
         long rate = IdleRules.ratePerSecond(s.levels);
         int multiplier = IdleRules.multiplierPercent(s.levels);
+        int collected = IdleRules.collected(s.levels);
+        int bonus = IdleRules.collectionBonusPercent(collected);
         List<ProducerView> producers = new ArrayList<>();
         for (int i = 0; i < IdleRules.PRODUCER_COUNT; i++) {
             var p = IdleRules.PRODUCERS.get(i);
-            long contribution = (long) s.levels[i] * p.baseRate() * multiplier / 100;
+            long contribution = IdleRules.producerOutput(i, s.levels[i]) * multiplier * bonus / 10_000;
             // 처음 만날 때까지는 가려 둔다: 다음 도로롱은 값의 절반을 모으면 보인다
             boolean revealed = i == 0 || s.levels[i] > 0 || s.totalEarned * 2 >= p.baseCost();
-            producers.add(new ProducerView(i, p.name(), s.levels[i], IdleRules.producerCost(i, s.levels[i]), p.baseRate(), contribution, revealed));
+            producers.add(new ProducerView(i, p.name(), s.levels[i], IdleRules.producerCost(i, s.levels[i]), p.baseRate(), contribution, revealed,
+                    IdleRules.milestonesReached(s.levels[i]), IdleRules.outputMultiplier(s.levels[i]), IdleRules.nextMilestone(s.levels[i])));
+        }
+        int nextTarget = 0;
+        int nextPercent = 0;
+        for (int t = 0; t < IdleRules.COLLECTION_TARGETS.length; t++) {
+            if (collected < IdleRules.COLLECTION_TARGETS[t]) {
+                nextTarget = IdleRules.COLLECTION_TARGETS[t];
+                nextPercent = IdleRules.COLLECTION_TARGET_PERCENT[t];
+                break;
+            }
         }
         return new IdleView(s.oranges, s.totalEarned, rate, multiplier, s.tapLevel, IdleRules.tapPower(s.tapLevel, rate),
-                IdleRules.tapUpgradeCost(s.tapLevel), IdleRules.collected(s.levels), IdleRules.PRODUCER_COUNT, producers,
+                IdleRules.tapUpgradeCost(s.tapLevel), collected, IdleRules.PRODUCER_COUNT, bonus, nextTarget, nextPercent, producers,
                 clock.millis(), settlement.seconds(), settlement.gained(), settlement.capped(), IdleRules.ORANGE_CAP);
     }
 
