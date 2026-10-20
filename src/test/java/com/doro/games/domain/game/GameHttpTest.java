@@ -30,7 +30,14 @@ class GameHttpTest extends GamesHttpTestBase {
         mockMvc.perform(get("/api/v1/games")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[?(@.slug=='runner')]").exists());
-        mockMvc.perform(get("/api/v1/games/runner")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/games/runner")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.category").value("minigame"));
+        // 진행 상황이 이어지는 방치형은 로비에서 다른 구역에 나온다
+        mockMvc.perform(get("/api/v1/games/orange-farm")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.category").value("longplay"));
+        mockMvc.perform(get("/api/v1/games/highlights")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.slug=='orange-farm')].category").value("longplay"))
+                .andExpect(jsonPath("$.data[?(@.slug=='runner')].category").value("minigame"));
         mockMvc.perform(get("/api/v1/games/runner/leaderboard")).andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/games/nope")).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("GAME-404-01"));

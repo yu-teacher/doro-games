@@ -10,10 +10,14 @@ export interface ApiEnvelope<T> {
   data: T;
 }
 
+/** minigame: 한 판씩 점수를 겨루는 게임, longplay: 진행 상황이 이어지는 게임(방치형 등) */
+export type GameCategory = 'minigame' | 'longplay';
+
 export interface Game {
   slug: string;
   title: string;
   description: string;
+  category: GameCategory;
   enabled: boolean;
 }
 
@@ -54,6 +58,7 @@ export interface GameHighlight {
   slug: string;
   title: string;
   description: string;
+  category: GameCategory;
   topScore: number | null;
   topNickname: string | null;
   myBest: number | null;

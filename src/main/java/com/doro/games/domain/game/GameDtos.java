@@ -14,9 +14,9 @@ public final class GameDtos {
     /** 점수는 정수. 상한은 판 시간으로 서버가 따로 검사하고, 여기서는 자료형이 넘치지 않게만 막는다. */
     public static final long SCORE_CAP = 1_000_000_000L;
 
-    public record GameResponse(String slug, String title, String description, boolean enabled) {
+    public record GameResponse(String slug, String title, String description, String category, boolean enabled) {
         public static GameResponse from(Game game) {
-            return new GameResponse(game.getSlug(), game.getTitle(), game.getDescription(), game.isEnabled());
+            return new GameResponse(game.getSlug(), game.getTitle(), game.getDescription(), game.getCategory(), game.isEnabled());
         }
     }
 
@@ -39,7 +39,7 @@ public final class GameDtos {
     }
 
     /** 로비 카드 한 장: 게임 정보와 현재 1위, (로그인했다면) 내 최고 기록. 기록이 없으면 해당 필드는 null. */
-    public record GameHighlight(String slug, String title, String description,
+    public record GameHighlight(String slug, String title, String description, String category,
                                 Long topScore, String topNickname, Long myBest, Long myRank) {
     }
 

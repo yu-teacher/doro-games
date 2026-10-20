@@ -31,6 +31,9 @@ export default function GameCard({ game, isAuthenticated }: GameCardProps) {
         <h2 className="text-lg font-bold text-slate-50">{game.title}</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-slate-400">{game.description}</p>
 
+        {game.category === 'longplay' ? (
+          <p className="mt-4 text-sm text-slate-500">{isAuthenticated ? '내 농장은 서버에 저장돼요' : '로그인하면 내 농장이 저장돼요'}</p>
+        ) : (
         <dl className="mt-4 space-y-1 text-sm">
           <div className="flex items-center justify-between gap-3">
             <dt className="text-slate-500">1위</dt>
@@ -49,8 +52,11 @@ export default function GameCard({ game, isAuthenticated }: GameCardProps) {
             </dd>
           </div>
         </dl>
+        )}
 
-        <span className="mt-4 inline-block text-sm font-semibold text-sky-300 transition group-hover:translate-x-0.5">플레이 →</span>
+        <span className="mt-4 inline-block text-sm font-semibold text-sky-300 transition group-hover:translate-x-0.5">
+          {game.category === 'longplay' ? '이어서 하기 →' : '플레이 →'}
+        </span>
       </div>
     </Link>
   );
