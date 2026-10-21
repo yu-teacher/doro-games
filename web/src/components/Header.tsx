@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { buildLoginUrl, useAuthStore } from '../store/authStore';
 import { useProfileDialog } from '../store/profileDialogStore';
+import ServiceLauncher from './ServiceLauncher';
 
 export default function Header() {
   const { user, isAuthenticated, signOut } = useAuthStore();
@@ -22,6 +23,8 @@ export default function Header() {
           도로 게임 천국
         </Link>
       </div>
+      <div className="relative flex items-center gap-2">
+      <ServiceLauncher currentId="games" />
       {isAuthenticated && user ? (
         <div className="flex items-center gap-3 text-sm">
           <button type="button" onClick={showProfile} title="프로필 수정" className="font-medium text-slate-200 underline-offset-4 hover:text-sky-300 hover:underline">
@@ -40,6 +43,7 @@ export default function Header() {
           로그인
         </a>
       )}
+      </div>
     </header>
   );
 }
