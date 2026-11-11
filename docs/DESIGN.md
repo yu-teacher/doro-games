@@ -1,7 +1,7 @@
 # 설계 메모
 
 ## 구조
-- `src/` Spring Boot 백엔드: Doro IAM(OAuth, BFF 세션 쿠키) + Doro Guard(ReBAC) 연동. 독립 DB `service_games`.
+- `src/` Spring Boot 백엔드: Doro IAM(로그인은 별도 BFF, 이 서비스는 게이트웨이가 붙인 Bearer 토큰만 검증) + Doro Guard(ReBAC) 연동. 독립 DB `service_games`.
 - `web/` React + Vite PWA. 게임은 Canvas 로 그리고, 규칙은 화면과 분리된 순수 함수(`engine.ts`)로 둔다.
 
 ## 게임 한 개를 추가하는 방법

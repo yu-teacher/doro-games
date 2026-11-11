@@ -17,7 +17,7 @@
 - **게임 규칙은 화면과 분리된 순수 함수**입니다. 고정 시간 단계(1/60초)와 시드 난수로 같은 입력이면 같은 결과가 나오므로, 단위 테스트가 쉽고 서버 재생(replay) 검증으로 확장할 수 있습니다.
 - **점수는 서버가 발급한 판에 묶입니다.** 서버가 잰 경과 시간 안에 낼 수 있는 점수만 인정하고, 한 판은 한 번만 제출할 수 있습니다.
 - **권한은 Guard 가 판정합니다.** 게임 열기/닫기는 `games_game#manager` 관계로만 결정하며 코드에 역할 분기를 두지 않습니다.
-- **BFF 로그인.** 브라우저는 HttpOnly 세션 쿠키만 가지고, OAuth 토큰은 서버에 암호화해 저장합니다(PKCE, CSRF 헤더).
+- **BFF 로그인.** 로그인·세션은 Doro 의 별도 BFF(doro-bff)가 맡습니다. 브라우저는 HttpOnly 세션 쿠키만 가지고, 게이트웨이가 요청마다 `Authorization: Bearer` 를 붙여 주면 이 서비스는 그 토큰만 검증합니다.
 
 ## 구성
 | 위치 | 내용 |
@@ -28,7 +28,7 @@
 | `deploy/` | 게이트웨이 설정 조각 |
 
 ## 로컬 실행
-형제 디렉터리에 `../Doro` 가 있어야 합니다(SDK 를 소스로 포함 빌드).
+형제 디렉터리에 `../Doro` 가 있어야 합니다(SDK 를 소스로 포함 빌드). SDK 버전은 `.doro-sdk-ref` 의 태그로 고정합니다(CI·배포가 그 태그를 받습니다. 로컬도 맞추려면 `git -C ../Doro checkout $(cat .doro-sdk-ref)`).
 
 ```bash
 cp .env.example .env   # 값을 채운다
@@ -36,7 +36,7 @@ cp .env.example .env   # 값을 채운다
 cd web && npm ci && npm run dev   # 웹 :3006 → http://localhost:3006/games/
 ```
 
-로그인을 쓰려면 로컬 IAM 에 OAuth 클라이언트 `doro-games`(redirect URI `http://localhost:3006/games/api/v1/bff/callback`, 자사 앱)를 등록해야 합니다.
+로그인은 이 서비스가 하지 않습니다. 로그인까지 확인하려면 Doro 의 BFF(doro-bff)와 게이트웨이를 함께 띄우고, IAM 에 OAuth 클라이언트 `doro-games`(redirect URI `…/games/api/v1/bff/callback`, 자사 앱)를 등록합니다. API 는 게이트웨이가 붙여 주는 Bearer 토큰만 봅니다.
 
 ## 테스트
 ```bash

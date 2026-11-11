@@ -2,62 +2,39 @@ package com.doro.games.support;
 
 import com.hunnit_beasts.doro.sdk.security.jwks.JwksKeyProvider;
 import com.jayway.jsonpath.JsonPath;
-import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 세션 쿠키로 인증된 HTTP 테스트의 공통 기반. 가짜 IAM 서버와 실제 DB·Guard 를 쓰고,
- * 실제 로그인 흐름(PKCE 인가 요청 → 콜백)을 거쳐 사용자별 세션 쿠키를 만든다.
- * 같은 설정이면 Spring 컨텍스트가 재사용되므로 가짜 IAM 은 JVM 이 끝날 때만 내린다.
+ * 인증된 HTTP 테스트의 공통 기반. 실제 DB·Guard 를 쓰고, 운영처럼 게이트웨이가 붙여 주는 {@code Authorization: Bearer} 로 요청을 인증한다
+ * (로그인·세션은 별도 BFF 가 하므로 이 서비스에는 로그인 흐름이 없다). 토큰은 가짜 IAM 서명 키로 만들고 JWKS 에 그 공개 키를 등록한다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 public abstract class GamesHttpTestBase {
 
-    protected static final String SITE = "https://games.test";
-    protected static final String COOKIE = "doro_games_session";
-    protected static final String CSRF = "X-Games-Csrf";
-    protected static final String LOGIN_COOKIE = "doro_games_login";
     protected static final String CLIENT_ID = "doro-games";
 
-    protected static final FakeIam IAM = startIam();
-
-    private static FakeIam startIam() {
-        try {
-            FakeIam iam = new FakeIam();
-            Runtime.getRuntime().addShutdownHook(new Thread(iam::close));
-            return iam;
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
+    protected static final FakeIam IAM = new FakeIam();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        registry.add("games.auth.authorize-url", () -> "https://doro.test/oauth2/authorize");
-        registry.add("games.auth.token-url", () -> IAM.baseUrl() + "/oauth2/token");
-        registry.add("games.auth.revoke-url", () -> IAM.baseUrl() + "/oauth2/revoke");
-        registry.add("games.auth.redirect-uri", () -> SITE + "/games/api/v1/bff/callback");
-        registry.add("games.auth.web-base-path", () -> "/games");
-        registry.add("games.auth.cookie-secure", () -> "true");
         registry.add("doro.iam.revocation-check", () -> "OFF");
     }
 
@@ -65,12 +42,8 @@ public abstract class GamesHttpTestBase {
     @Autowired private JwksKeyProvider jwks;
 
     @BeforeEach
-    void resetIam() {
+    void registerIamKey() {
         jwks.registerKey(FakeIam.KID, IAM.publicKey());
-        IAM.rejectRefresh = false;
-        IAM.unavailable = false;
-        IAM.forcedTokenStatus = 0;
-        IAM.accessTtlSeconds = 900;
     }
 
     // ------------------------------------------------------------------ 도우미
@@ -85,78 +58,25 @@ public abstract class GamesHttpTestBase {
         return JsonPath.read(body, "$.data.runId");
     }
 
-    /** 로그인한 테스트 사용자. 세션 쿠키로 요청을 인증한다. */
-    public record TestUser(UUID id, String email, String cookie) {
+    /** 로그인한 테스트 사용자. 게이트웨이가 붙여 주는 것과 같은 Bearer 토큰으로 요청을 인증한다. */
+    public record TestUser(UUID id, String email, String accessToken) {
 
-        /** 이 사용자로 요청을 보낸다. 상태를 바꾸는 메서드에는 CSRF 증명(헤더·Origin)도 붙인다. */
         public RequestBuilder sign(AbstractMockHttpServletRequestBuilder<?> request) {
-            request.cookie(new Cookie(COOKIE, cookie));
-            request.header(CSRF, "1");
-            request.header("Origin", SITE);
+            request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
             return request;
         }
     }
 
-    /** 새 사용자를 만들고 실제 로그인 흐름으로 세션을 받는다. */
+    /** 새 사용자를 만든다. 운영의 로그인 직후처럼 세션 조회를 한 번 불러 게임 사용자 행을 만든다. */
     protected TestUser newUser() throws Exception {
         UUID id = UUID.randomUUID();
         String email = newEmail();
-        return new TestUser(id, email, login(id, email, null));
-    }
-
-    /** loginCookie: 로그인 시작 때 이 브라우저가 받은 '로그인 진행 중' 쿠키 값(콜백이 같은 브라우저에서 왔는지 대조된다). */
-    protected record StartedLogin(String state, String challenge, String location, String loginCookie) {}
-
-    protected StartedLogin startLogin(String returnPath) throws Exception {
-        var request = get("/api/v1/bff/login");
-        if (returnPath != null) {
-            request.param("return", returnPath);
-        }
-        MockHttpServletResponse response = mockMvc.perform(request).andExpect(status().isFound()).andReturn().getResponse();
-        String location = response.getHeader("Location");
-        var params = UriComponentsBuilder.fromUriString(location).build().getQueryParams();
-        String loginCookie = null;
-        for (String header : response.getHeaders("Set-Cookie")) {
-            if (header.startsWith(LOGIN_COOKIE + "=")) {
-                loginCookie = header.substring((LOGIN_COOKIE + "=").length(), header.indexOf(';'));
-            }
-        }
-        return new StartedLogin(params.getFirst("state"), params.getFirst("code_challenge"), location, loginCookie);
-    }
-
-    /** 로그인을 시작한 바로 그 브라우저(로그인 진행 중 쿠키 포함)에서 콜백을 보낸다. */
-    protected MockHttpServletResponse callback(String code, StartedLogin started) throws Exception {
-        var request = get("/api/v1/bff/callback").param("code", code).param("state", started.state());
-        if (started.loginCookie() != null) {
-            request.cookie(new Cookie(LOGIN_COOKIE, started.loginCookie()));
-        }
-        return mockMvc.perform(request).andReturn().getResponse();
-    }
-
-    protected MockHttpServletResponse callback(String code, String state) throws Exception {
-        return mockMvc.perform(get("/api/v1/bff/callback").param("code", code).param("state", state)).andReturn().getResponse();
-    }
-
-    protected String cookieValueOf(MockHttpServletResponse response) {
-        String header = response.getHeader("Set-Cookie");
-        assertThat(header).as("세션 쿠키가 발급되어야 한다").isNotNull().startsWith(COOKIE + "=");
-        return header.substring((COOKIE + "=").length(), header.indexOf(';'));
-    }
-
-    /** 로그인 전체를 수행하고 세션 쿠키 값을 돌려준다. */
-    protected String login(UUID userId, String email, String returnPath) throws Exception {
-        StartedLogin started = startLogin(returnPath);
-        String code = IAM.issueCode(userId, email, started.challenge(), CLIENT_ID);
-        MockHttpServletResponse response = callback(code, started);
-        assertThat(response.getStatus()).isEqualTo(302);
-        return cookieValueOf(response);
+        TestUser user = new TestUser(id, email, IAM.accessToken(id, email, CLIENT_ID));
+        send(user, get("/api/v1/bff/session")).andExpect(status().isOk()).andExpect(jsonPath("$.data.authenticated").value(true));
+        return user;
     }
 
     protected String newEmail() {
         return "games-" + UUID.randomUUID().toString().substring(0, 8) + "@doro.local";
-    }
-
-    protected Cookie session(String value) {
-        return new Cookie(COOKIE, value);
     }
 }

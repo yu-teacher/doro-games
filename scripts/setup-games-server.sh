@@ -6,9 +6,9 @@
 #
 # 하는 일
 #   1) Postgres 에 service_games DB 를 만든다(없을 때만).
-#   2) ~/doro-games/.env 를 만든다: DB 접속 정보는 블로그 .env 에서 복사하고, 세션 암호화 키와 Guard 서비스 토큰은 새로 만든다.
+#   2) ~/doro-games/.env 를 만든다: DB 접속 정보는 블로그 .env 에서 복사하고, Guard 서비스 토큰은 새로 만든다.
 #   3) ~/doro/.env 의 DORO_GUARD_SERVICE_TOKENS 에 games 토큰(schema-write)을 추가하고 Guard 를 다시 만든다(몇 초간 권한 검사 중단).
-#   4) Doro IAM(doro_auth)에 OAuth 클라이언트 doro-games 를 등록한다(redirect_uri 정확히 하나).
+#   4) Doro IAM(doro_auth)에 OAuth 클라이언트 doro-games 를 등록한다(redirect_uri 정확히 하나). 로그인은 별도 BFF(doro-bff)가 이 클라이언트로 한다.
 # 하지 않는 일: 게이트웨이 nginx 설정 반영, 러너 등록, docker-compose.prod.yml 복사(안내만 한다).
 set -Eeuo pipefail
 
@@ -73,11 +73,8 @@ if [ "$need_env" = true ]; then
     echo "DB_USER=$(env_get "$DORO_ENV" POSTGRES_USER)"
     echo "DB_PASSWORD=$(env_get "$BLOG_ENV" DB_PASSWORD)"
     echo "DORO_GUARD_SERVICE_TOKEN=$GUARD_TOKEN"
-    echo "GAMES_SESSION_KEY=$(openssl rand -base64 32)"
-    echo "GAMES_OAUTH_AUTHORIZE_URL=$ORIGIN/oauth2/authorize"
-    echo "GAMES_OAUTH_REDIRECT_URI=$ORIGIN/games/api/v1/bff/callback"
   } > "$ENV_FILE"
-  log "$ENV_FILE 생성 (값은 출력하지 않는다. GAMES_SESSION_KEY 를 잃으면 모든 로그인 세션이 무효가 된다)"
+  log "$ENV_FILE 생성 (값은 출력하지 않는다)"
 fi
 
 # ---------------------------------------------------------------- 3) Guard 서비스 토큰
