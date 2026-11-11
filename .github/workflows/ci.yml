@@ -57,13 +57,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # build.gradle 의 includeBuild('../Doro') 와 Guard 이미지 빌드를 위해 Doro 레포를 형제 디렉터리로 받는다.
+      # settings.gradle 의 includeBuild('../Doro') 와 Guard 이미지 빌드를 위해 Doro 레포를 형제 디렉터리로 받는다(.doro-sdk-ref 의 태그).
       - uses: actions/checkout@v4
         with:
           path: doro-games
+      # Doro SDK 는 .doro-sdk-ref 에 적은 태그로 고정한다(Doro main 이 바뀌어도 이 서비스 빌드는 그대로). 올릴 때는 그 파일만 바꾼다.
+      - id: sdk
+        run: echo "ref=$(tr -d '[:space:]' < doro-games/.doro-sdk-ref)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           repository: yu-teacher/doro
+          ref: ${{ steps.sdk.outputs.ref }}
           path: Doro
       - uses: actions/setup-java@v5
         with:
