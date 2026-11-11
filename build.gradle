@@ -56,8 +56,6 @@ tasks.named('test') {
     maxHeapSize = '2048m'
     // 테스트는 로컬 docker 의 개발용 Postgres 를 쓴다. 운영 설정에는 기본 비밀번호를 두지 않으므로 테스트에서만 주입한다.
     environment 'DB_PASSWORD', System.getenv('DB_PASSWORD') ?: 'doro_secret'
-    // 테스트 전용 세션 암호화 키(운영 키가 아니다)
-    environment 'GAMES_SESSION_KEY', System.getenv('GAMES_SESSION_KEY') ?: 'dGVzdC1vbmx5LWtleS0wMTIzNDU2Nzg5MDEyMzQ1Njc='
 }
 
 jar {
